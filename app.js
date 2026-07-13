@@ -405,16 +405,7 @@ function renderRoom() {
               <textarea id="privateMediatorText" rows="4" placeholder="Napište svůj pohled. Mediátor ho ostatním případně přeloží bezpečněji."></textarea>
               <button class="primary-btn" type="submit">Poslat</button>
             </form>
-          </section>
-
-          <aside class="room-side-panel" aria-label="Nastavení mediace">
-            ${mediationSettingsPanel(room)}
-            <div class="invite-box quiet-invite">
-              <strong>Pozvánka</strong>
-              <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
-              <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
-            </div>
-            <details class="side-tools" ${state.advancedOpen ? "open" : ""}>
+            <details class="side-tools chat-tools" ${state.advancedOpen ? "open" : ""}>
               <summary>Analýza a dohoda</summary>
               <div class="drawer-actions">
                 <button id="draftAgreement" class="primary-btn" type="button">Navrhnout dohodu</button>
@@ -427,6 +418,16 @@ function renderRoom() {
               </div>
               <div id="toolArea" class="tool-area">${toolContent(room)}</div>
             </details>
+          </section>
+
+          <aside class="room-side-panel" aria-label="Nastavení mediace">
+            ${mediationSettingsPanel(room)}
+            <div class="invite-box quiet-invite">
+              <strong>Pozvánka</strong>
+              <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
+              <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
+            </div>
+            ${testAccessPanel(room)}
           </aside>
         </div>
       </div>
@@ -447,6 +448,20 @@ function mediationSettings(room) {
     adaptToRecipient: room.mediationSettings?.adaptToRecipient !== false,
     variants: Number(room.mediationSettings?.variants || 3),
   };
+}
+
+function testAccessPanel(room) {
+  const first = room.participants[0] || state.sessionName || "Strana A";
+  const second = room.participants.find((name) => name !== first) || "Strana B";
+  const base = `${location.origin}${location.pathname}`;
+  return `
+    <div class="invite-box test-access">
+      <strong>Test dvou stran</strong>
+      <p class="meta">Otevřete dva odkazy ve dvou oknech nebo anonymním okně.</p>
+      <a class="test-link" href="${base}?participant=${encodeURIComponent(first)}#${room.id}" target="_blank" rel="noreferrer">Otevřít jako ${escapeHtml(first)}</a>
+      <a class="test-link" href="${base}?participant=${encodeURIComponent(second)}#${room.id}" target="_blank" rel="noreferrer">Otevřít jako ${escapeHtml(second)}</a>
+    </div>
+  `;
 }
 
 function mediationSettingsPanel(room) {
@@ -1036,6 +1051,7 @@ async function apiAction(path, payload) {
 
 async function start() {
   await loadRemoteState();
+  await applyParticipantFromUrl();
   render();
   setInterval(async () => {
     if (state.view !== "room") return;
@@ -1045,6 +1061,26 @@ async function start() {
     await loadRemoteState();
     renderRoom();
   }, 2500);
+}
+
+async function applyParticipantFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const participant = params.get("participant");
+  if (!participant) return;
+  const cleanName = participant.trim();
+  if (!cleanName) return;
+  if (location.hash.startsWith("#room-")) state.activeRoomId = location.hash.replace("#", "");
+  setSessionName(cleanName);
+  const room = activeRoom();
+  if (!room.participants.includes(cleanName)) {
+    try {
+      await apiAction(`/api/rooms/${room.id}/join`, { name: cleanName });
+      await loadRemoteState();
+    } catch {
+      addToast("Testovací role se nepovedla připojit.");
+    }
+  }
+  state.view = "room";
 }
 
 function initials(name) {

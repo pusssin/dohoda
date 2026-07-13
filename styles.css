@@ -2062,6 +2062,10 @@ textarea {
   padding: 0;
 }
 
+.chat-tools {
+  margin: 0 24px 24px;
+}
+
 .side-tools > summary {
   min-height: 48px;
   padding: 0 14px;
@@ -2078,6 +2082,28 @@ textarea {
 .side-tools .tabs,
 .side-tools .tool-area {
   margin: 0 12px 12px;
+}
+
+.test-access {
+  display: grid;
+  gap: 9px;
+}
+
+.test-link {
+  display: block;
+  border: 1px solid var(--future-line);
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--future-accent) 7%, transparent);
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.test-link:hover {
+  border-color: color-mix(in srgb, var(--future-accent) 44%, var(--future-line));
+  background: color-mix(in srgb, var(--future-accent) 12%, transparent);
 }
 
 .message {
