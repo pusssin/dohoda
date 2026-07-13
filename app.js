@@ -389,62 +389,46 @@ function renderRoom() {
           </div>
         </header>
 
-        <section class="room-panel private-mediation primary-chat" aria-label="Soukromá mediace">
-          <div class="section-title">
-            <div>
-              <p class="room-kicker">Hlavní prostor</p>
-              <h2>Soukromý rozhovor s AI mediátorem</h2>
-              <p class="meta">AI tady mluví jen s vámi. Pomáhá pochopit druhou perspektivu a připravit kompromis bez automatického sdílení.</p>
+        <div class="room-workspace">
+          <section class="room-panel private-mediation primary-chat" aria-label="Soukromá mediace">
+            <div class="section-title">
+              <div>
+                <p class="room-kicker">Hlavní prostor</p>
+                <h2>Můj rozhovor s AI mediátorem</h2>
+                <p class="meta">Vy vidíte vlastní slova přesně tak, jak je napíšete. Ostatním stranám mediátor podle potřeby předá bezpečnější a srozumitelnější verzi.</p>
+              </div>
+              <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
             </div>
-            <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
-          </div>
-          ${privateBridgePanel(room)}
-          <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message) => messageView({ ...message, me: !message.ai })).join("")}</div>
-          <form id="privateMediatorForm" class="composer private-main-composer">
-            <textarea id="privateMediatorText" rows="4" placeholder="Napište soukromě AI mediátorovi, co potřebujete vyjasnit"></textarea>
-            <button class="primary-btn" type="submit">Poslat</button>
-          </form>
-        </section>
+            ${privateBridgePanel(room)}
+            <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message) => messageView({ ...message, me: !message.ai })).join("")}</div>
+            <form id="privateMediatorForm" class="composer private-main-composer">
+              <textarea id="privateMediatorText" rows="4" placeholder="Napište svůj pohled. Mediátor ho ostatním případně přeloží bezpečněji."></textarea>
+              <button class="primary-btn" type="submit">Poslat</button>
+            </form>
+          </section>
 
-        <details class="advanced-room-drawer" ${state.advancedOpen ? "open" : ""}>
-          <summary>
-            <span>Další možnosti</span>
-            <small>mapa, návrh dohody, společný chat, pozvánka</small>
-          </summary>
-          <div class="advanced-room-grid">
-            <aside class="room-panel tools" aria-label="Nástroje místnosti">
+          <aside class="room-side-panel" aria-label="Nastavení mediace">
+            ${mediationSettingsPanel(room)}
+            <div class="invite-box quiet-invite">
+              <strong>Pozvánka</strong>
+              <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
+              <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
+            </div>
+            <details class="side-tools" ${state.advancedOpen ? "open" : ""}>
+              <summary>Analýza a dohoda</summary>
               <div class="drawer-actions">
                 <button id="draftAgreement" class="primary-btn" type="button">Navrhnout dohodu</button>
               </div>
               <div class="tabs">
                 ${toolTab("map", "Mapa")}
-                ${toolTab("bridge", "Kompromis")}
+                ${toolTab("bridge", "Most")}
                 ${toolTab("forms", "Formuláře")}
                 ${toolTab("agreement", "Dohoda")}
               </div>
               <div id="toolArea" class="tool-area">${toolContent(room)}</div>
-            </aside>
-
-            <section class="room-panel secondary-panel" aria-label="Společný prostor">
-              ${mediationSettingsPanel(room)}
-              <div class="invite-box quiet-invite">
-                <strong>Pozvánka</strong>
-                <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
-                <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
-              </div>
-
-              <details class="shared-chat-drawer" open>
-                <summary>Společný chat <span>${room.messages.length}</span></summary>
-                <div class="messages compact-messages" id="messages">${room.messages.map(messageView).join("")}</div>
-                <form id="messageForm" class="composer shared-composer">
-                  <select id="messageAuthor">${room.participants.map((name) => `<option ${name === state.sessionName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select>
-                  <textarea id="messageText" rows="2" placeholder="Sdílet schválenou formulaci do společného prostoru"></textarea>
-                  <button class="secondary-btn" type="submit">Sdílet</button>
-                </form>
-              </details>
-            </section>
-          </div>
-        </details>
+            </details>
+          </aside>
+        </div>
       </div>
     </section>
   `;
@@ -467,6 +451,8 @@ function mediationSettings(room) {
 
 function mediationSettingsPanel(room) {
   const settings = mediationSettings(room);
+  const autoBridgeHelp = "Když někdo napíše zprávu, ostatním stranám ji mediátor podle potřeby předá v bezpečnější a srozumitelnější podobě.";
+  const adaptHelp = "Mediátor zohlední, komu zpráva míří: jinak mluví s někým zraněným, jinak s někým rozčileným nebo věcným.";
   return `
     <form id="mediationSettingsForm" class="mediation-settings">
       <div>
@@ -480,6 +466,7 @@ function mediationSettingsPanel(room) {
           <option value="calm" ${settings.style === "calm" ? "selected" : ""}>Klidný a citlivý</option>
           <option value="clear" ${settings.style === "clear" ? "selected" : ""}>Jasný a strukturovaný</option>
           <option value="direct" ${settings.style === "direct" ? "selected" : ""}>Přímý, ale laskavý</option>
+          <option value="authentic" ${settings.style === "authentic" ? "selected" : ""}>Co nejautentičtější</option>
         </select>
       </label>
       <label>
@@ -490,13 +477,15 @@ function mediationSettingsPanel(room) {
           <option value="3" ${settings.variants === 3 ? "selected" : ""}>3 varianty</option>
         </select>
       </label>
-      <label class="toggle-line">
+      <label class="toggle-line" title="${escapeHtml(autoBridgeHelp)}">
         <input id="autoBridge" type="checkbox" ${settings.autoBridge ? "checked" : ""} />
         <span>Automaticky přerámovat zprávu pro ostatní</span>
+        <span class="hint-dot" aria-label="${escapeHtml(autoBridgeHelp)}">?</span>
       </label>
-      <label class="toggle-line">
+      <label class="toggle-line" title="${escapeHtml(adaptHelp)}">
         <input id="adaptToRecipient" type="checkbox" ${settings.adaptToRecipient ? "checked" : ""} />
         <span>Přizpůsobovat tón adresátovi</span>
+        <span class="hint-dot" aria-label="${escapeHtml(adaptHelp)}">?</span>
       </label>
     </form>
   `;
@@ -589,7 +578,7 @@ function toolContent(room) {
           <li>Mluví soukromě s každou stranou.</li>
           <li>Pomáhá pojmenovat potřeby za konfliktem.</li>
           <li>Naznačuje možnou perspektivu druhé strany bez prozrazení soukromí.</li>
-          <li>Připravuje formulace, které lze vědomě sdílet.</li>
+          <li>Předává ostatním stranám bezpečnější verzi toho, co je potřeba sdělit.</li>
         </ul>
       </div>
       ${listTool("Možné mosty", compromiseSuggestions(room))}
@@ -646,7 +635,7 @@ function messageView(message) {
 function bindRoomEvents(room, inviteUrl) {
   document.getElementById("backToProfile").addEventListener("click", () => route("profile"));
 
-  const advancedDrawer = document.querySelector(".advanced-room-drawer");
+  const advancedDrawer = document.querySelector(".side-tools");
   if (advancedDrawer) {
     advancedDrawer.addEventListener("toggle", () => {
       state.advancedOpen = advancedDrawer.open;
@@ -704,32 +693,6 @@ function bindRoomEvents(room, inviteUrl) {
         author,
         text,
       });
-      await loadRemoteState();
-      renderRoom();
-    } catch (error) {
-      await loadRemoteState();
-      renderRoom();
-      addToast(error.message || "Odeslání se nepovedlo.");
-    } finally {
-      state.requestInProgress = false;
-    }
-  });
-
-  document.getElementById("messageForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const textarea = document.getElementById("messageText");
-    const button = event.currentTarget.querySelector("button");
-    const text = textarea.value.trim();
-    const author = document.getElementById("messageAuthor").value;
-    if (!text) return;
-    setFormWaiting(button, true, "AI odpovídá...");
-    state.requestInProgress = true;
-    room.messages.push({ author, text });
-    room.messages.push({ author: "AI mediátor", text: "AI mediátor píše odpověď...", ai: true, pending: true });
-    textarea.value = "";
-    renderRoom();
-    try {
-      await apiAction(`/api/rooms/${room.id}/messages`, { author, text });
       await loadRemoteState();
       renderRoom();
     } catch (error) {
@@ -852,7 +815,7 @@ function mediatorReply(text) {
 
 function updateMap(room, text) {
   const lower = text.toLowerCase();
-  if (lower.includes("souhlas")) addUnique(room.map.shared, "Ve společném chatu se objevil výslovný souhlas.");
+  if (lower.includes("souhlas")) addUnique(room.map.shared, "V komunikaci se objevil výslovný souhlas.");
   if (lower.includes("termín") || lower.includes("kdy")) addUnique(room.map.open, "Doplnit termín a vlastníka dohody.");
   if (lower.includes("hranice") || lower.includes("nechci")) addUnique(room.map.needs, "Některá strana potřebuje jasně chráněnou hranici.");
 }

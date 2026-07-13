@@ -28,6 +28,8 @@ const styleInstructions = {
     "Tón je srozumitelný, strukturovaný a laskavě věcný. Drž se krátkých kroků a jasných formulací.",
   direct:
     "Tón je přímý, ale ne tvrdý. Pojmenuj podstatu bez obviňování a nabídni praktickou cestu dál.",
+  authentic:
+    "Tón zachovává maximum autenticity autora. Nevyhlazuj sdělení do sterilní fráze. Zjemni jen to, co by zbytečně zraňovalo nebo bránilo porozumění, a jasně odděl původní emoci od bezpečnější formulace.",
 };
 
 const store = {
@@ -184,7 +186,7 @@ async function handleApi(req, res, url) {
           {
             author: "AI mediátor",
             text:
-              "Místnost je založená. Tady můžete soukromě popsat svůj pohled. Do společného prostoru nic nepřenáším bez vašeho vědomého rozhodnutí.",
+              "Místnost je založená. Tady můžete popsat svůj pohled. Mediátor ostatním předá jen bezpečnější a srozumitelnější verzi toho, co je potřeba sdělit.",
             ai: true,
           },
         ],
@@ -239,6 +241,7 @@ async function handleApi(req, res, url) {
         text: await privateMediatorReply(room, text, author),
         ai: true,
       });
+      await distributeMediatedUpdate(room, text, author);
       updateMap(room, text);
       moveProgress(room, 5);
     }
@@ -512,6 +515,36 @@ async function privateMediatorReply(room, text, author) {
   return fallbackPrivateMediatorReply(room, text, author);
 }
 
+async function distributeMediatedUpdate(room, text, author) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  const recipients = room.participants.filter((name) => name && name !== author);
+  if (!recipients.length) return;
+
+  for (const recipient of recipients) {
+    const conversation = ensurePrivateConversation(room, recipient);
+    const mediatedText = settings.autoBridge
+      ? await mediatedRecipientUpdate(room, text, author, recipient)
+      : `${author} právě přidal/a nový pohled. AI mediátor ho bere v úvahu při hledání dohody.`;
+    conversation.push({
+      author: "AI mediátor",
+      text: mediatedText,
+      ai: true,
+      mediatedFrom: author,
+    });
+  }
+}
+
+async function mediatedRecipientUpdate(room, text, author, recipient) {
+  if (openaiApiKey) {
+    try {
+      return await openaiRecipientBridgeReply(room, text, author, recipient);
+    } catch (error) {
+      console.warn("OpenAI recipient bridge fallback:", error.message);
+    }
+  }
+  return fallbackRecipientBridgeReply(room, text, author, recipient);
+}
+
 async function openaiMediatorReply(room, text, author) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -583,8 +616,8 @@ function buildMediatorContext(room, text, author) {
     `Adresáti překladu/přerámování: ${recipients}`,
     "",
     settings.autoBridge
-      ? "Odpověz jako mediátor ve společném chatu. Nejdřív krátce přelož nebo zjemni sdělení autora pro ostatní strany bez ztráty významu. Pak přidej jednu otázku nebo další krok. Odpověď má být vřelá a srozumitelná."
-      : "Odpověz jako mediátor do společného chatu. Buď konkrétní, užitečný a lidský. Pokud je to vhodné, polož jednu otázku nebo navrhni další krok.",
+      ? "Odpověz jako mediátor pro ostatní strany. Nejdřív krátce přelož nebo zjemni sdělení autora bez ztráty významu. Pak přidej jednu otázku nebo další krok. Odpověď má být vřelá a srozumitelná."
+      : "Odpověz jako mediátor do komunikace mezi stranami. Buď konkrétní, užitečný a lidský. Pokud je to vhodné, polož jednu otázku nebo navrhni další krok.",
   ].join("\n");
 }
 
@@ -602,7 +635,7 @@ async function openaiPrivateMediatorReply(room, text, author) {
           role: "system",
           content: [
             "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem.",
-            "Tvým cílem je pomoci mu uklidnit situaci, pojmenovat potřeby, rozlišit fakta a interpretace, představit možný pohled druhé strany a připravit bezpečné formulace pro společný prostor.",
+            "Tvým cílem je pomoci mu uklidnit situaci, pojmenovat potřeby, rozlišit fakta a interpretace, představit možný pohled druhé strany a připravit bezpečné formulace pro komunikaci mezi stranami.",
             "Odpovídej česky, empaticky, živě a povzbudivě. Nezněj stroze ani sportovně-direktivně.",
             "Nabízej několik variant formulace, aby si účastník mohl vybrat tón, který je mu blízký.",
             "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
@@ -627,6 +660,48 @@ async function openaiPrivateMediatorReply(room, text, author) {
   const data = await response.json();
   const output = extractResponseText(data);
   if (!output) throw new Error("OpenAI private response did not contain text");
+  return output.trim();
+}
+
+async function openaiRecipientBridgeReply(room, text, author, recipient) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiApiKey}`,
+    },
+    body: JSON.stringify({
+      model: openaiModel,
+      input: [
+        {
+          role: "system",
+          content: [
+            "Jsi Dohoda, AI mediátor, který bezpečně překládá soukromé sdělení jedné strany pro jinou stranu konfliktu.",
+            "Cíl: adresát má vědět, o čem druhá strana komunikuje, ale nemá být zbytečně zasažen surovou formulací.",
+            "Zachovej podstatu sdělení, potřebu a emoci autora. Pokud je to užitečné, uveď, že původní tón mohl být ostřejší nebo zraněný, ale neeskaluj.",
+            "Nemluv jako korporátní filtr. Buď lidský, stručný, klidný a srozumitelný.",
+            "Nepředstírej jistotu o vnitřních motivech autora.",
+            styleInstruction(room),
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: buildRecipientBridgeContext(room, text, author, recipient),
+        },
+      ],
+      temperature: 0.72,
+      max_output_tokens: 420,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`OpenAI recipient bridge failed: ${response.status} ${detail.slice(0, 180)}`);
+  }
+
+  const data = await response.json();
+  const output = extractResponseText(data);
+  if (!output) throw new Error("OpenAI recipient bridge response did not contain text");
   return output.trim();
 }
 
@@ -665,6 +740,42 @@ function buildPrivateMediatorContext(room, text, author) {
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
     `Odpověz soukromě. Nejdřív lidsky pojmenuj, co slyšíš jako potřebu. Pak opatrně nabídni možnou perspektivu druhé strany. Nakonec navrhni ${settings.variants} různé formulace, které by účastník mohl, pokud chce, sdílet. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
+  ].join("\n");
+}
+
+function buildRecipientBridgeContext(room, text, author, recipient) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  const recipientHistory = ensurePrivateConversation(room, recipient)
+    .slice(-8)
+    .map((message) => `${message.author}: ${message.text}`)
+    .join("\n");
+  return [
+    `Místnost: ${room.title}`,
+    `Cíl: ${room.goal}`,
+    `Autor původního sdělení: ${author}`,
+    `Adresát přerámování: ${recipient}`,
+    `Styl mediace: ${settings.style}`,
+    `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
+    "",
+    "Mapa konfliktu:",
+    `Body shody: ${room.map.shared.join("; ")}`,
+    `Otevřené body: ${room.map.open.join("; ")}`,
+    `Potřeby stran: ${room.map.needs.join("; ")}`,
+    "",
+    "Dosavadní soukromý kontext adresáta:",
+    recipientHistory || "- žádný",
+    "",
+    `Původní zpráva od ${author}: ${text}`,
+    "",
+    [
+      `Napiš zprávu pro ${recipient}.`,
+      "Začni stručně: kdo přinesl nový pohled a o čem zhruba je.",
+      "Pak přelož sdělení do bezpečnější řeči pro adresáta.",
+      "Na konci přidej jednu otázku nebo malý krok, který pomůže porozumění.",
+      settings.style === "authentic"
+        ? "Protože je zvolen autentický styl, zachovej víc původní energie autora, ale bez zbytečného útoku."
+        : "Zachovej vřelý a neútočný tón.",
+    ].join(" "),
   ].join("\n");
 }
 
@@ -712,7 +823,7 @@ function fallbackPrivateMediatorReply(room, text, author) {
   const variants = Math.max(1, Math.min(3, settings.variants));
 
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu")) {
-    return `Tady nejste primárně ve společném chatu. Tohle je váš soukromý rozhovor se mnou jako mediátorem. Pomůžu vám ujasnit váš pohled, připravit bezpečnou formulaci a postupně hledat, kde by se mohl potkat váš zájem s pohledem ${otherLabel}. Začněme jednoduše: co je pro vás v téhle situaci nejdůležitější?`;
+    return `Tady nejste v běžném společném chatu. Tohle je váš prostor s mediátorem. Pomůžu vám ujasnit váš pohled a ostatním stranám podle potřeby předám bezpečnější verzi toho, co je důležité. Začněme jednoduše: co je pro vás v téhle situaci nejdůležitější?`;
   }
 
   if (lower.includes("štve") || lower.includes("stve") || lower.includes("vadí") || lower.includes("nechci") || lower.includes("bojím")) {
@@ -746,9 +857,21 @@ function fallbackPrivateMediatorReply(room, text, author) {
   ].join("\n");
 }
 
+function fallbackRecipientBridgeReply(room, text, author, recipient) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  const authenticity = settings.style === "authentic"
+    ? "Ponechávám víc původní energie sdělení, ale odstraňuji to, co by zbytečně zraňovalo."
+    : "Překládám to do klidnější řeči, aby šlo lépe slyšet podstatu.";
+  return [
+    `${author} právě přinesl/a nový pohled. ${authenticity}`,
+    `Pro vás, ${recipient}, může být užitečné slyšet hlavně toto: druhá strana potřebuje, aby se její obava nebo hranice nebrala jako útok, ale jako signál, že je potřeba jasnější dohoda.`,
+    `Možný další krok: můžete krátce odpovědět, co z toho slyšíte jako skutečnou potřebu, ještě než začnete navrhovat řešení.`,
+  ].join("\n");
+}
+
 function updateMap(room, text) {
   const lower = text.toLowerCase();
-  if (lower.includes("souhlas")) addUnique(room.map.shared, "Ve společném chatu se objevil výslovný souhlas.");
+  if (lower.includes("souhlas")) addUnique(room.map.shared, "V komunikaci se objevil výslovný souhlas.");
   if (lower.includes("termín") || lower.includes("kdy")) addUnique(room.map.open, "Doplnit termín a vlastníka dohody.");
   if (lower.includes("hranice") || lower.includes("nechci")) addUnique(room.map.needs, "Některá strana potřebuje jasně chráněnou hranici.");
 }
@@ -774,7 +897,7 @@ function makeAgreement(room) {
     "",
     "Pracovní dohoda:",
     "- Strany potvrdí, které pravidlo má platit od příštího týdne.",
-    "- Každá změna dohody bude nejdřív oznámena ve společné místnosti.",
+    "- Každá změna dohody bude nejdřív přeložena mediátorem všem zúčastněným.",
     "- Po 14 dnech proběhne kontrola, zda dohoda funguje.",
     "",
     "Otevřené body:",

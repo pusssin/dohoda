@@ -1913,3 +1913,205 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* Futuristic minimal room system */
+:root {
+  --body-bg: linear-gradient(180deg, #f8faf8 0%, #eef2ef 100%);
+  --future-bg: linear-gradient(180deg, #fbfcfb 0%, #f0f4f1 100%);
+  --future-panel: rgba(255, 255, 255, 0.74);
+  --future-panel-strong: rgba(255, 255, 255, 0.92);
+  --future-line: rgba(32, 42, 38, 0.12);
+  --future-glow: 0 24px 80px rgba(36, 126, 101, 0.12);
+  --future-accent: #23a17e;
+  --future-accent-2: #3c7ea1;
+}
+
+:root[data-theme="dark"] {
+  --body-bg: linear-gradient(180deg, #070a09 0%, #101412 100%);
+  --future-bg: linear-gradient(180deg, #080b0a 0%, #111614 100%);
+  --future-panel: rgba(18, 23, 21, 0.74);
+  --future-panel-strong: rgba(22, 28, 25, 0.94);
+  --future-line: rgba(218, 240, 229, 0.14);
+  --future-glow: 0 24px 80px rgba(78, 220, 177, 0.11);
+  --future-accent: #7ce2bd;
+  --future-accent-2: #8ec7e7;
+}
+
+.room-shell.minimal-room {
+  background: var(--future-bg);
+}
+
+.room-focus {
+  width: min(1240px, 100%);
+  gap: 20px;
+}
+
+.room-hero {
+  border: 1px solid var(--future-line);
+  border-radius: 24px;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 9%, transparent), transparent 44%),
+    var(--future-panel);
+  box-shadow: var(--future-glow);
+}
+
+.room-hero h1 {
+  font-size: clamp(2.1rem, 4.2vw, 4rem);
+}
+
+.room-hero-actions {
+  border-color: var(--future-line);
+  border-radius: 18px;
+  background: var(--future-panel-strong);
+  box-shadow: none;
+}
+
+.room-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 18px;
+  align-items: start;
+}
+
+.primary-chat,
+.room-side-panel {
+  border: 1px solid var(--future-line);
+  border-radius: 24px;
+  background: var(--future-panel);
+  box-shadow: var(--future-glow);
+  backdrop-filter: blur(18px);
+}
+
+.primary-chat {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--future-accent) 8%, transparent), transparent 220px),
+    var(--future-panel);
+}
+
+.room-side-panel {
+  position: sticky;
+  top: 78px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.mediation-settings,
+.quiet-invite,
+.side-tools {
+  border: 1px solid var(--future-line);
+  border-radius: 18px;
+  background: var(--future-panel-strong);
+}
+
+.mediation-settings {
+  padding: 14px;
+}
+
+.toggle-line {
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 7px 8px;
+}
+
+.toggle-line:hover {
+  border-color: var(--future-line);
+  background: color-mix(in srgb, var(--future-accent) 7%, transparent);
+}
+
+.hint-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border: 1px solid var(--future-line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.hint-dot::after {
+  content: attr(aria-label);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  display: none;
+  width: min(280px, 78vw);
+  border: 1px solid var(--future-line);
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.toggle-line:hover .hint-dot::after,
+.hint-dot:hover::after {
+  display: block;
+}
+
+.side-tools {
+  padding: 0;
+}
+
+.side-tools > summary {
+  min-height: 48px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 900;
+  list-style: none;
+}
+
+.side-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.side-tools .drawer-actions,
+.side-tools .tabs,
+.side-tools .tool-area {
+  margin: 0 12px 12px;
+}
+
+.message {
+  border-color: var(--future-line);
+  background: var(--future-panel-strong);
+}
+
+.message.ai {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent-2) 13%, transparent), transparent 72%),
+    var(--future-panel-strong);
+}
+
+.message.me {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 15%, transparent), transparent 72%),
+    var(--future-panel-strong);
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--future-accent), color-mix(in srgb, var(--future-accent) 68%, var(--future-accent-2)));
+}
+
+.secondary-btn {
+  background: color-mix(in srgb, var(--future-accent-2) 18%, var(--surface));
+  color: var(--ink);
+}
+
+@media (max-width: 980px) {
+  .room-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .room-side-panel {
+    position: static;
+  }
+}
