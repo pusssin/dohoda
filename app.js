@@ -11,6 +11,7 @@ const state = {
   online: false,
   aiConfigured: false,
   databaseConfigured: false,
+  requestInProgress: false,
   profiles: [
     {
       id: "u1",
@@ -596,24 +597,48 @@ function bindRoomEvents(room, inviteUrl) {
 
   document.getElementById("privateMediatorForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const text = document.getElementById("privateMediatorText").value.trim();
+    const textarea = document.getElementById("privateMediatorText");
+    const button = event.currentTarget.querySelector("button");
+    const text = textarea.value.trim();
     if (!text) return;
-    await apiAction(`/api/rooms/${room.id}/private`, {
-      author: state.sessionName || activeProfile().name,
-      text,
-    });
-    await loadRemoteState();
-    renderRoom();
+    setFormWaiting(button, true, "AI odpovídá...");
+    state.requestInProgress = true;
+    try {
+      await apiAction(`/api/rooms/${room.id}/private`, {
+        author: state.sessionName || activeProfile().name,
+        text,
+      });
+      await loadRemoteState();
+      renderRoom();
+    } catch (error) {
+      textarea.value = text;
+      addToast(error.message || "Odeslání se nepovedlo.");
+      setFormWaiting(button, false);
+    } finally {
+      state.requestInProgress = false;
+    }
   });
 
   document.getElementById("messageForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const text = document.getElementById("messageText").value.trim();
+    const textarea = document.getElementById("messageText");
+    const button = event.currentTarget.querySelector("button");
+    const text = textarea.value.trim();
     const author = document.getElementById("messageAuthor").value;
     if (!text) return;
-    await apiAction(`/api/rooms/${room.id}/messages`, { author, text });
-    await loadRemoteState();
-    renderRoom();
+    setFormWaiting(button, true, "AI odpovídá...");
+    state.requestInProgress = true;
+    try {
+      await apiAction(`/api/rooms/${room.id}/messages`, { author, text });
+      await loadRemoteState();
+      renderRoom();
+    } catch (error) {
+      textarea.value = text;
+      addToast(error.message || "Odeslání se nepovedlo.");
+      setFormWaiting(button, false);
+    } finally {
+      state.requestInProgress = false;
+    }
   });
 
   document.getElementById("draftAgreement").addEventListener("click", async () => {
@@ -885,6 +910,13 @@ function flashButton(button, label) {
   }, 1400);
 }
 
+function setFormWaiting(button, waiting, label = "Poslat") {
+  if (!button) return;
+  button.disabled = waiting;
+  button.textContent = waiting ? label : "Poslat";
+  button.classList.toggle("is-loading", waiting);
+}
+
 function addToast(text) {
   const toast = document.createElement("div");
   toast.className = "chip";
@@ -924,7 +956,16 @@ async function apiAction(path, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error("Action failed");
+  if (!response.ok) {
+    let message = "Odeslání se nepovedlo.";
+    try {
+      const detail = await response.json();
+      message = detail.detail || detail.error || message;
+    } catch {
+      message = await response.text() || message;
+    }
+    throw new Error(message);
+  }
   const data = await response.json();
   if (data.store?.rooms) state.rooms = data.store.rooms;
   return data;
@@ -935,6 +976,7 @@ async function start() {
   render();
   setInterval(async () => {
     if (state.view !== "room") return;
+    if (state.requestInProgress) return;
     const focused = document.activeElement;
     if (focused && ["INPUT", "TEXTAREA", "SELECT"].includes(focused.tagName)) return;
     await loadRemoteState();

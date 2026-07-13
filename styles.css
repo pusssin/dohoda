@@ -1590,6 +1590,16 @@ body {
   transform: translateY(0);
 }
 
+.primary-btn:disabled,
+.secondary-btn:disabled,
+.primary-btn.is-loading,
+.secondary-btn.is-loading {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+  box-shadow: none;
+}
+
 input,
 select,
 textarea {
