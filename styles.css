@@ -1180,6 +1180,37 @@ form.private-main-composer button {
   background: var(--surface-soft);
 }
 
+.mediation-settings {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--conflict-soft, var(--surface-soft)) 36%, transparent), transparent),
+    var(--surface-soft);
+}
+
+.mediation-settings strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.toggle-line {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.toggle-line input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--conflict, var(--green));
+}
+
 .shared-composer {
   grid-template-columns: 130px 1fr auto;
 }

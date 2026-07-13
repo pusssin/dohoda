@@ -12,6 +12,24 @@ const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
 let sqlClient;
 let databaseReady;
 
+const defaultMediationSettings = {
+  style: "warm",
+  autoBridge: true,
+  adaptToRecipient: true,
+  variants: 3,
+};
+
+const styleInstructions = {
+  warm:
+    "Tón je vřelý, lidský, povzbuzující a nadějný. Vyhýbej se studenému poradenskému jazyku. Používej běžnou češtinu.",
+  calm:
+    "Tón je klidný, citlivý a opatrný. Nejprve uznej emoci, potom jemně nabídni další pohled.",
+  clear:
+    "Tón je srozumitelný, strukturovaný a laskavě věcný. Drž se krátkých kroků a jasných formulací.",
+  direct:
+    "Tón je přímý, ale ne tvrdý. Pojmenuj podstatu bez obviňování a nabídni praktickou cestu dál.",
+};
+
 const store = {
   rooms: [
     {
@@ -23,6 +41,7 @@ const store = {
       progress: 18,
       archived: false,
       participants: ["Anna"],
+      mediationSettings: { ...defaultMediationSettings },
       privateConversations: {
         Anna: [
           {
@@ -62,6 +81,7 @@ const store = {
       progress: 8,
       archived: false,
       participants: ["Anna"],
+      mediationSettings: { ...defaultMediationSettings, style: "calm" },
       privateConversations: {
         Anna: [
           {
@@ -138,6 +158,7 @@ async function handleApi(req, res, url) {
   await loadPersistentStore();
 
   if (req.method === "GET" && url.pathname === "/api/state") {
+    normalizeStore();
     sendJson(res, 200, {
       ...store,
       aiConfigured: Boolean(openaiApiKey),
@@ -157,6 +178,7 @@ async function handleApi(req, res, url) {
       progress: 4,
       archived: false,
       participants: unique([body.author || "Zakladatel"]),
+      mediationSettings: { ...defaultMediationSettings },
       privateConversations: {
         [body.author || "Zakladatel"]: [
           {
@@ -228,6 +250,13 @@ async function handleApi(req, res, url) {
       addAi(room, await mediatorReply(room, text, author));
       updateMap(room, body.text || "");
       moveProgress(room, 7);
+    }
+
+    if (action === "settings") {
+      room.mediationSettings = sanitizeMediationSettings({
+        ...room.mediationSettings,
+        ...body,
+      });
     }
 
     if (action === "agreement") {
@@ -407,7 +436,35 @@ function loadLocalEnv(filePath) {
 }
 
 function findRoom(id) {
-  return store.rooms.find((room) => room.id === id);
+  const room = store.rooms.find((item) => item.id === id);
+  if (room) ensureRoomDefaults(room);
+  return room;
+}
+
+function normalizeStore() {
+  store.rooms.forEach(ensureRoomDefaults);
+}
+
+function ensureRoomDefaults(room) {
+  room.mediationSettings = sanitizeMediationSettings(room.mediationSettings || {});
+  if (!room.privateConversations) room.privateConversations = {};
+  if (!room.map) room.map = { shared: [], open: [], needs: [] };
+  if (!Array.isArray(room.map.shared)) room.map.shared = [];
+  if (!Array.isArray(room.map.open)) room.map.open = [];
+  if (!Array.isArray(room.map.needs)) room.map.needs = [];
+}
+
+function sanitizeMediationSettings(settings) {
+  const style = ["warm", "calm", "clear", "direct"].includes(settings.style)
+    ? settings.style
+    : defaultMediationSettings.style;
+  const variants = Math.max(1, Math.min(3, Number(settings.variants || defaultMediationSettings.variants)));
+  return {
+    style,
+    autoBridge: settings.autoBridge !== false,
+    adaptToRecipient: settings.adaptToRecipient !== false,
+    variants,
+  };
 }
 
 function unique(items) {
@@ -467,16 +524,23 @@ async function openaiMediatorReply(room, text, author) {
       input: [
         {
           role: "system",
-          content:
-            "Jsi Dohoda, nezaujatý AI mediátor v konfliktu. Nejsi soudce a neurčuješ vítěze. Pomáháš stranám porozumět si, oddělit fakta od interpretací, pojmenovat potřeby, hlídat férový tón a navrhovat konkrétní další krok. Odpovídej česky, lidsky a stručně. Když je účastník zmatený, nejdřív vysvětli účel místnosti. Když je zpráva útočná, přerámuj ji bez studu a bez moralizování. Nepředstírej právní ani terapeutickou autoritu.",
+          content: [
+            "Jsi Dohoda, nezaujatý AI mediátor v konfliktu. Nejsi soudce a neurčuješ vítěze.",
+            "Pomáháš stranám porozumět si, oddělit fakta od interpretací, pojmenovat potřeby, hlídat férový tón a navrhovat konkrétní další krok.",
+            "Odpovídej česky, lidsky, nadějně a bez chladného korporátního tónu.",
+            "Když je zpráva ostrá, zraněná nebo chaotická, přelož ji pro ostatní strany do srozumitelnější a méně zraňující řeči. Nepřepisuj význam tak, aby se autor ztratil.",
+            "Když je zapnutý automatický překlad mezi stranami, tvoje odpověď má být hlavně most: co asi autor potřebuje sdělit, jak to mohou ostatní slyšet bezpečněji, a jedna otázka, která posune dohodu.",
+            "Nepředstírej právní ani terapeutickou autoritu.",
+            styleInstruction(room),
+          ].join(" "),
         },
         {
           role: "user",
           content: buildMediatorContext(room, text, author),
         },
       ],
-      temperature: 0.55,
-      max_output_tokens: 420,
+      temperature: 0.72,
+      max_output_tokens: 620,
     }),
   });
 
@@ -492,15 +556,20 @@ async function openaiMediatorReply(room, text, author) {
 }
 
 function buildMediatorContext(room, text, author) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const recentMessages = room.messages
     .slice(-12)
     .map((message) => `${message.author}: ${message.text}`)
     .join("\n");
+  const recipients = room.participants.filter((name) => name !== author).join(", ") || "ostatní strany";
   return [
     `Místnost: ${room.title}`,
     `Cíl: ${room.goal}`,
     `Typ konfliktu: ${room.type}`,
     `Účastníci: ${room.participants.join(", ")}`,
+    `Styl mediace: ${settings.style}`,
+    `Automatický překlad mezi stranami: ${settings.autoBridge ? "ano" : "ne"}`,
+    `Přizpůsobovat tón adresátům: ${settings.adaptToRecipient ? "ano" : "ne"}`,
     "",
     "Mapa konfliktu:",
     `Body shody: ${room.map.shared.join("; ")}`,
@@ -511,8 +580,11 @@ function buildMediatorContext(room, text, author) {
     recentMessages,
     "",
     `Nová zpráva od ${author}: ${text}`,
+    `Adresáti překladu/přerámování: ${recipients}`,
     "",
-    "Odpověz jako mediátor do společného chatu. Buď konkrétní a užitečný. Pokud je to vhodné, polož jednu otázku nebo navrhni další krok.",
+    settings.autoBridge
+      ? "Odpověz jako mediátor ve společném chatu. Nejdřív krátce přelož nebo zjemni sdělení autora pro ostatní strany bez ztráty významu. Pak přidej jednu otázku nebo další krok. Odpověď má být vřelá a srozumitelná."
+      : "Odpověz jako mediátor do společného chatu. Buď konkrétní, užitečný a lidský. Pokud je to vhodné, polož jednu otázku nebo navrhni další krok.",
   ].join("\n");
 }
 
@@ -528,16 +600,22 @@ async function openaiPrivateMediatorReply(room, text, author) {
       input: [
         {
           role: "system",
-          content:
-            "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem. Tvým cílem je pomoci mu uklidnit situaci, pojmenovat potřeby, rozlišit fakta a interpretace, představit možný pohled druhé strany a připravit neútočnou formulaci pro společný prostor. Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace. Odpovídej česky, konkrétně a empaticky.",
+          content: [
+            "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem.",
+            "Tvým cílem je pomoci mu uklidnit situaci, pojmenovat potřeby, rozlišit fakta a interpretace, představit možný pohled druhé strany a připravit bezpečné formulace pro společný prostor.",
+            "Odpovídej česky, empaticky, živě a povzbudivě. Nezněj stroze ani sportovně-direktivně.",
+            "Nabízej několik variant formulace, aby si účastník mohl vybrat tón, který je mu blízký.",
+            "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
+            styleInstruction(room),
+          ].join(" "),
         },
         {
           role: "user",
           content: buildPrivateMediatorContext(room, text, author),
         },
       ],
-      temperature: 0.6,
-      max_output_tokens: 520,
+      temperature: 0.76,
+      max_output_tokens: 760,
     }),
   });
 
@@ -553,6 +631,7 @@ async function openaiPrivateMediatorReply(room, text, author) {
 }
 
 function buildPrivateMediatorContext(room, text, author) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const privateHistory = ensurePrivateConversation(room, author)
     .slice(-10)
     .map((message) => `${message.author}: ${message.text}`)
@@ -568,6 +647,9 @@ function buildPrivateMediatorContext(room, text, author) {
     `Cíl: ${room.goal}`,
     `Aktuální účastník: ${author}`,
     `Ostatní účastníci: ${otherParticipants}`,
+    `Styl mediace: ${settings.style}`,
+    `Počet navržených formulací: ${settings.variants}`,
+    `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
     "",
     "Mapa konfliktu:",
     `Body shody: ${room.map.shared.join("; ")}`,
@@ -582,8 +664,13 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    "Odpověz soukromě. Vysvětli, co slyšíš jako potřebu, nabídni možnou perspektivu druhé strany a navrhni jednu bezpečnou formulaci, kterou by účastník mohl, pokud chce, sdílet.",
+    `Odpověz soukromě. Nejdřív lidsky pojmenuj, co slyšíš jako potřebu. Pak opatrně nabídni možnou perspektivu druhé strany. Nakonec navrhni ${settings.variants} různé formulace, které by účastník mohl, pokud chce, sdílet. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
   ].join("\n");
+}
+
+function styleInstruction(room) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  return styleInstructions[settings.style] || styleInstructions.warm;
 }
 
 function extractResponseText(data) {
@@ -597,6 +684,11 @@ function extractResponseText(data) {
 
 function fallbackMediatorReply(room, text, author) {
   const lower = text.toLowerCase();
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  const others = room.participants.filter((name) => name !== author).join(", ") || "ostatní";
+  if (settings.autoBridge) {
+    return `${author} pravděpodobně přináší něco, co je pro něj důležité. Pro ${others} bych to přeložil jemněji takto: „Potřebuji, abychom si to pojmenovali bez tlaku a našli pravidlo, které bude dávat smysl všem.“ Co by vám pomohlo cítit, že je tahle dohoda fér?`;
+  }
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu") || lower.includes("jako")) {
     return `${author}, tohle je společná místnost pro řešení konfliktu „${room.title}“. Cílem není rozhodnout, kdo má pravdu, ale pomoct všem stranám bezpečně popsat svůj pohled, najít body shody a dojít ke konkrétní dohodě. Můžete začít jednou větou: co je pro vás v téhle situaci nejdůležitější?`;
   }
@@ -616,20 +708,42 @@ function fallbackPrivateMediatorReply(room, text, author) {
   const lower = text.toLowerCase();
   const others = room.participants.filter((name) => name !== author);
   const otherLabel = others.length ? others.join(", ") : "druhá strana";
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  const variants = Math.max(1, Math.min(3, settings.variants));
 
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu")) {
     return `Tady nejste primárně ve společném chatu. Tohle je váš soukromý rozhovor se mnou jako mediátorem. Pomůžu vám ujasnit váš pohled, připravit bezpečnou formulaci a postupně hledat, kde by se mohl potkat váš zájem s pohledem ${otherLabel}. Začněme jednoduše: co je pro vás v téhle situaci nejdůležitější?`;
   }
 
   if (lower.includes("štve") || lower.includes("stve") || lower.includes("vadí") || lower.includes("nechci") || lower.includes("bojím")) {
-    return `Slyším v tom silnou hranici nebo obavu. Zkusme ji přeložit z pozice „proti něčemu“ do potřeby: co potřebujete ochránit, aby pro vás dohoda byla férová? Možná perspektiva ${otherLabel}: nemusí nutně odmítat vaši potřebu, může se bát ztráty autonomie nebo kontroly nad vlastní částí práce. Bezpečná formulace by mohla znít: „Potřebuji, aby bylo jasné, za co nesu odpovědnost a kde mám reálnou možnost rozhodovat.“`;
+    return [
+      "Slyším v tom silnou hranici nebo obavu. To je důležitý signál, ne chyba. Zkusme ji přeložit z pozice „proti něčemu“ do potřeby, která se dá sdílet bezpečněji.",
+      `Možná perspektiva ${otherLabel}: nemusí nutně odmítat vaši potřebu, může se bát ztráty autonomie, tlaku nebo další kontroly.`,
+      "",
+      "Možné formulace:",
+      ...[
+        "Jemnější: „Narážím v tom na něco, co je pro mě citlivé. Potřeboval bych to probrat klidněji, abychom se slyšeli.“",
+        "Jasnější: „Vadí mi hlavně nejistota. Potřebuji vědět, podle čeho se rozhoduje a co už je domluvené.“",
+        "Vstřícnější: „Nechci vás tlačit do kouta. Chci jen najít pravidlo, ve kterém se budeme moct oba cítit bezpečně.“",
+      ].slice(0, variants),
+    ].join("\n");
   }
 
   if (lower.includes("souhlas") || lower.includes("možná") || lower.includes("mozna")) {
     return `Tohle je dobrý moment pro most. Zkuste pojmenovat, s čím souhlasíte, a hned dodat svoji podmínku férovosti. Například: „Souhlasím, že nechceme další zbytečný proces. Zároveň potřebuji jednoduché pravidlo, aby se odpovědnosti neměnily bez potvrzení.“`;
   }
 
-  return `${author}, rozumím. Z toho, co píšete, zatím slyším hlavně potřebu: mít v situaci víc jasno a nebýt zatlačený do role, která vám nepřipadá férová. Možná perspektiva ${otherLabel}: může vnímat stejnou situaci jako snahu udržet věci pružné, ne jako útok na vás. Zkusme další krok: napište jednou větou, co by pro vás byla minimální přijatelná dohoda.`;
+  return [
+    `${author}, rozumím. Slyším v tom potřebu, aby vás druhá strana opravdu pochopila a aby dohoda nebyla jen formální, ale použitelná.`,
+    `Možná perspektiva ${otherLabel}: nemusí jít o odmítnutí vaší potřeby, ale o jinou obavu, tempo nebo způsob komunikace.`,
+    "",
+    "Možné formulace:",
+    ...[
+      "Jemnější: „Rád bych to zkusil pojmenovat tak, abychom se neposouvali do výčitek, ale k dohodě.“",
+      "Jasnější: „Potřebuji vědět, co konkrétně platí a podle čeho poznáme, že jsme se domluvili.“",
+      "Vstřícnější: „Chci najít řešení, které bude dávat smysl i vám, jen potřebuji lépe pochopit vaše hranice.“",
+    ].slice(0, variants),
+  ].join("\n");
 }
 
 function updateMap(room, text) {

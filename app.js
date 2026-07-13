@@ -425,6 +425,7 @@ function renderRoom() {
             </aside>
 
             <section class="room-panel secondary-panel" aria-label="Společný prostor">
+              ${mediationSettingsPanel(room)}
               <div class="invite-box quiet-invite">
                 <strong>Pozvánka</strong>
                 <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
@@ -452,6 +453,52 @@ function renderRoom() {
 
 function toolTab(id, label) {
   return `<button class="tab ${state.activeTool === id ? "active" : ""}" type="button" data-tool="${id}">${label}</button>`;
+}
+
+function mediationSettings(room) {
+  return {
+    style: room.mediationSettings?.style || "warm",
+    autoBridge: room.mediationSettings?.autoBridge !== false,
+    adaptToRecipient: room.mediationSettings?.adaptToRecipient !== false,
+    variants: Number(room.mediationSettings?.variants || 3),
+  };
+}
+
+function mediationSettingsPanel(room) {
+  const settings = mediationSettings(room);
+  return `
+    <form id="mediationSettingsForm" class="mediation-settings">
+      <div>
+        <strong>Styl mediace</strong>
+        <p class="meta">Určuje jazyk, vřelost a způsob překladu mezi stranami.</p>
+      </div>
+      <label>
+        Přístup
+        <select id="mediationStyle">
+          <option value="warm" ${settings.style === "warm" ? "selected" : ""}>Vřelý a optimistický</option>
+          <option value="calm" ${settings.style === "calm" ? "selected" : ""}>Klidný a citlivý</option>
+          <option value="clear" ${settings.style === "clear" ? "selected" : ""}>Jasný a strukturovaný</option>
+          <option value="direct" ${settings.style === "direct" ? "selected" : ""}>Přímý, ale laskavý</option>
+        </select>
+      </label>
+      <label>
+        Počet návrhů formulace
+        <select id="mediationVariants">
+          <option value="1" ${settings.variants === 1 ? "selected" : ""}>1 varianta</option>
+          <option value="2" ${settings.variants === 2 ? "selected" : ""}>2 varianty</option>
+          <option value="3" ${settings.variants === 3 ? "selected" : ""}>3 varianty</option>
+        </select>
+      </label>
+      <label class="toggle-line">
+        <input id="autoBridge" type="checkbox" ${settings.autoBridge ? "checked" : ""} />
+        <span>Automaticky přerámovat zprávu pro ostatní</span>
+      </label>
+      <label class="toggle-line">
+        <input id="adaptToRecipient" type="checkbox" ${settings.adaptToRecipient ? "checked" : ""} />
+        <span>Přizpůsobovat tón adresátovi</span>
+      </label>
+    </form>
+  `;
 }
 
 function privateConversation(room) {
@@ -609,6 +656,26 @@ function bindRoomEvents(room, inviteUrl) {
     const copied = await copyText(inviteUrl, "Pozvánka zkopírována");
     flashButton(event.currentTarget, copied ? "Zkopírováno" : "Označeno");
   });
+
+  const settingsForm = document.getElementById("mediationSettingsForm");
+  if (settingsForm) {
+    settingsForm.addEventListener("change", async () => {
+      const payload = {
+        style: document.getElementById("mediationStyle").value,
+        variants: Number(document.getElementById("mediationVariants").value),
+        autoBridge: document.getElementById("autoBridge").checked,
+        adaptToRecipient: document.getElementById("adaptToRecipient").checked,
+      };
+      room.mediationSettings = payload;
+      try {
+        await apiAction(`/api/rooms/${room.id}/settings`, payload);
+        await loadRemoteState();
+        addToast("Nastavení mediace uloženo");
+      } catch (error) {
+        addToast(error.message || "Nastavení se nepovedlo uložit.");
+      }
+    });
+  }
 
   document.getElementById("privateMediatorForm").addEventListener("submit", async (event) => {
     event.preventDefault();
