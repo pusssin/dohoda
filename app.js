@@ -466,6 +466,21 @@ function privateConversation(room) {
   ];
 }
 
+function ensureClientPrivateConversation(room, author) {
+  if (!room.privateConversations) room.privateConversations = {};
+  if (!room.privateConversations[author]) {
+    room.privateConversations[author] = [
+      {
+        author: "AI mediátor",
+        text:
+          "Toto je váš soukromý prostor. Popište mi svůj pohled a pomůžu vám najít formulaci, která nezvyšuje napětí.",
+        ai: true,
+      },
+    ];
+  }
+  return room.privateConversations[author];
+}
+
 function privateBridgePanel(room) {
   const others = room.participants.filter((name) => name !== state.sessionName);
   const otherLabel = others.length ? others.join(", ") : "pozvaná strana";
@@ -573,7 +588,7 @@ function listTool(title, items) {
 function messageView(message) {
   const mine = message.me || message.author === state.sessionName;
   return `
-    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""}">
+    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""}">
       <strong>${escapeHtml(message.author)}</strong>
       <p>${escapeHtml(message.text)}</p>
     </article>
@@ -601,19 +616,25 @@ function bindRoomEvents(room, inviteUrl) {
     const button = event.currentTarget.querySelector("button");
     const text = textarea.value.trim();
     if (!text) return;
+    const author = state.sessionName || activeProfile().name;
     setFormWaiting(button, true, "AI odpovídá...");
     state.requestInProgress = true;
+    const conversation = ensureClientPrivateConversation(room, author);
+    conversation.push({ author, text });
+    conversation.push({ author: "AI mediátor", text: "AI mediátor píše odpověď...", ai: true, pending: true });
+    textarea.value = "";
+    renderRoom();
     try {
       await apiAction(`/api/rooms/${room.id}/private`, {
-        author: state.sessionName || activeProfile().name,
+        author,
         text,
       });
       await loadRemoteState();
       renderRoom();
     } catch (error) {
-      textarea.value = text;
+      await loadRemoteState();
+      renderRoom();
       addToast(error.message || "Odeslání se nepovedlo.");
-      setFormWaiting(button, false);
     } finally {
       state.requestInProgress = false;
     }
@@ -628,14 +649,18 @@ function bindRoomEvents(room, inviteUrl) {
     if (!text) return;
     setFormWaiting(button, true, "AI odpovídá...");
     state.requestInProgress = true;
+    room.messages.push({ author, text });
+    room.messages.push({ author: "AI mediátor", text: "AI mediátor píše odpověď...", ai: true, pending: true });
+    textarea.value = "";
+    renderRoom();
     try {
       await apiAction(`/api/rooms/${room.id}/messages`, { author, text });
       await loadRemoteState();
       renderRoom();
     } catch (error) {
-      textarea.value = text;
+      await loadRemoteState();
+      renderRoom();
       addToast(error.message || "Odeslání se nepovedlo.");
-      setFormWaiting(button, false);
     } finally {
       state.requestInProgress = false;
     }
