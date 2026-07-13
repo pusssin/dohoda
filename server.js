@@ -102,7 +102,6 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
-      await loadPersistentStore();
       await handleApi(req, res, url);
       return;
     }
@@ -112,27 +111,32 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, host, () => {
+server.listen(port, () => {
   const shownHost = host === "0.0.0.0" ? "127.0.0.1" : host;
   console.log(`Dohoda prototype server: http://${shownHost}:${port}`);
 });
 
 async function handleApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/health") {
+    const database = await checkDatabase();
+    sendJson(res, 200, {
+      ok: true,
+      aiConfigured: Boolean(openaiApiKey),
+      databaseConfigured: Boolean(databaseUrl),
+      databaseOk: database.ok,
+      databaseError: database.error,
+      rooms: store.rooms.length,
+    });
+    return;
+  }
+
+  await loadPersistentStore();
+
   if (req.method === "GET" && url.pathname === "/api/state") {
     sendJson(res, 200, {
       ...store,
       aiConfigured: Boolean(openaiApiKey),
       databaseConfigured: Boolean(databaseUrl),
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/health") {
-    sendJson(res, 200, {
-      ok: true,
-      aiConfigured: Boolean(openaiApiKey),
-      databaseConfigured: Boolean(databaseUrl),
-      rooms: store.rooms.length,
     });
     return;
   }
@@ -364,6 +368,16 @@ async function savePersistentStore() {
     `,
     ["main", JSON.stringify({ rooms: store.rooms })],
   );
+}
+
+async function checkDatabase() {
+  if (!databaseUrl) return { ok: false, error: "DATABASE_URL není nastavené" };
+  try {
+    await loadPersistentStore();
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
 }
 
 function queryRows(result) {
