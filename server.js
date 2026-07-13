@@ -98,7 +98,7 @@ const mimeTypes = {
   ".png": "image/png",
 };
 
-const server = http.createServer(async (req, res) => {
+const app = async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
@@ -109,12 +109,17 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     sendJson(res, 500, { error: "Server error", detail: error.message });
   }
-});
+};
 
-server.listen(port, () => {
-  const shownHost = host === "0.0.0.0" ? "127.0.0.1" : host;
-  console.log(`Dohoda prototype server: http://${shownHost}:${port}`);
-});
+if (require.main === module && !process.env.VERCEL) {
+  const server = http.createServer(app);
+  server.listen(port, host, () => {
+    const shownHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+    console.log(`Dohoda prototype server: http://${shownHost}:${port}`);
+  });
+}
+
+module.exports = app;
 
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/health") {
