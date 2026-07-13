@@ -156,9 +156,13 @@ function renderProfile() {
       <header class="quiet-head">
         <div>
           <p class="room-kicker">${escapeHtml(profile.name)}</p>
-          <h1>Dohody</h1>
+          <h1>Vaše dohody</h1>
+          <p class="subtitle">Každý konflikt má vlastní místnost. Nejdřív si ujasněte téma, pak pozvěte další účastníky a nechte AI vést soukromé rozhovory ke kompromisu.</p>
         </div>
-        <span class="profile-count">${activeRooms.length} aktivní</span>
+        <div class="profile-metrics" aria-label="Souhrn profilu">
+          <span><strong>${activeRooms.length}</strong> aktivní</span>
+          <span><strong>${archivedRooms.length}</strong> archiv</span>
+        </div>
       </header>
 
       <details class="new-agreement-drawer">
@@ -312,6 +316,7 @@ function agreementRow(room, expandedRoomId) {
   return `
     <article class="agreement-row ${expanded ? "expanded" : ""} ${room.archived ? "archived" : ""}" style="${theme.style}">
       <button class="agreement-summary" type="button" data-toggle-room="${room.id}" aria-expanded="${expanded}">
+        <span class="agreement-accent" aria-hidden="true"></span>
         <span class="agreement-title">
           <strong>${escapeHtml(room.title)}</strong>
           <small>${escapeHtml(room.goal)}</small>
@@ -386,7 +391,7 @@ function renderRoom() {
           <div class="section-title">
             <div>
               <p class="room-kicker">Hlavní prostor</p>
-              <h2>Můj soukromý rozhovor s AI</h2>
+              <h2>Soukromý rozhovor s AI mediátorem</h2>
               <p class="meta">AI tady mluví jen s vámi. Pomáhá pochopit druhou perspektivu a připravit kompromis bez automatického sdílení.</p>
             </div>
             <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
