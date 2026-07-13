@@ -2150,3 +2150,264 @@ textarea {
     position: static;
   }
 }
+
+/* Apple Vision inspired refinement */
+:root {
+  --vision-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(241, 246, 243, 0.88) 38%, rgba(230, 237, 233, 0.94) 100%),
+    linear-gradient(115deg, rgba(129, 177, 165, 0.18), transparent 44%, rgba(80, 122, 159, 0.13));
+  --vision-glass: rgba(255, 255, 255, 0.62);
+  --vision-glass-strong: rgba(255, 255, 255, 0.82);
+  --vision-glass-soft: rgba(255, 255, 255, 0.38);
+  --vision-stroke: rgba(35, 47, 43, 0.13);
+  --vision-stroke-bright: rgba(255, 255, 255, 0.74);
+  --vision-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.78) inset,
+    0 34px 92px rgba(23, 33, 31, 0.14);
+  --vision-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  --vision-text-glow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+:root[data-theme="dark"] {
+  --vision-bg:
+    linear-gradient(180deg, rgba(7, 10, 9, 0.98) 0%, rgba(16, 22, 20, 0.94) 48%, rgba(8, 11, 10, 0.98) 100%),
+    linear-gradient(115deg, rgba(84, 131, 118, 0.22), transparent 46%, rgba(82, 109, 141, 0.16));
+  --vision-glass: rgba(18, 24, 22, 0.62);
+  --vision-glass-strong: rgba(24, 31, 28, 0.82);
+  --vision-glass-soft: rgba(255, 255, 255, 0.055);
+  --vision-stroke: rgba(224, 246, 237, 0.13);
+  --vision-stroke-bright: rgba(255, 255, 255, 0.08);
+  --vision-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 34px 95px rgba(0, 0, 0, 0.36);
+  --vision-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+  --vision-text-glow: none;
+}
+
+body {
+  background: var(--vision-bg);
+  background-attachment: fixed;
+}
+
+.topbar {
+  top: 12px;
+  width: min(1220px, calc(100% - 24px));
+  min-height: 54px;
+  margin: 12px auto 0;
+  border: 1px solid var(--vision-stroke);
+  border-radius: 999px;
+  background: var(--vision-glass);
+  box-shadow: var(--vision-shadow);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+.brand,
+.topbar nav a,
+.theme-toggle,
+.profile-pill {
+  text-shadow: var(--vision-text-glow);
+}
+
+.room-shell.minimal-room {
+  min-height: calc(100vh - 80px);
+  background: transparent;
+}
+
+.room-focus {
+  padding-top: 28px;
+  max-width: 1240px;
+}
+
+.back-link {
+  border: 1px solid var(--vision-stroke);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--vision-glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.room-hero,
+.primary-chat,
+.room-side-panel {
+  border-color: var(--vision-stroke);
+  background: var(--vision-glass);
+  box-shadow: var(--vision-shadow), var(--vision-inner);
+  backdrop-filter: blur(34px) saturate(1.35);
+  -webkit-backdrop-filter: blur(34px) saturate(1.35);
+}
+
+.room-hero {
+  border-radius: 36px;
+  padding: 34px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--future-accent) 10%, transparent), transparent 52%),
+    var(--vision-glass);
+}
+
+.room-hero h1 {
+  letter-spacing: 0;
+  text-shadow: var(--vision-text-glow);
+}
+
+.room-kicker {
+  letter-spacing: 0.08em;
+}
+
+.room-hero-actions,
+.mediation-settings,
+.quiet-invite,
+.side-tools,
+.bridge-panel > div,
+.tool-card {
+  border-color: var(--vision-stroke);
+  background: var(--vision-glass-strong);
+  box-shadow: 0 1px 0 var(--vision-stroke-bright) inset;
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+}
+
+.primary-chat,
+.room-side-panel {
+  border-radius: 36px;
+}
+
+.primary-chat {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--future-accent) 8%, transparent), transparent 280px),
+    var(--vision-glass);
+}
+
+.room-workspace {
+  align-items: start;
+  gap: 18px;
+}
+
+.room-side-panel {
+  position: sticky;
+  top: 86px;
+}
+
+.primary-chat .section-title {
+  padding: 24px 26px 0;
+}
+
+.primary-chat .bridge-panel {
+  margin: 18px 26px 0;
+}
+
+.primary-chat .private-main-stream {
+  padding: 22px 26px;
+}
+
+.primary-chat .private-main-composer {
+  margin: 0 18px 18px;
+  border: 1px solid var(--vision-stroke);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--vision-glass-strong) 72%, transparent);
+  box-shadow: 0 1px 0 var(--vision-stroke-bright) inset;
+}
+
+.message {
+  border-radius: 24px;
+  border-color: var(--vision-stroke);
+  background: var(--vision-glass-strong);
+  box-shadow: 0 1px 0 var(--vision-stroke-bright) inset;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.message.ai {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent-2) 15%, transparent), transparent 74%),
+    var(--vision-glass-strong);
+}
+
+.message.me {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 18%, transparent), transparent 74%),
+    var(--vision-glass-strong);
+}
+
+.message.activity {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 12%, transparent), transparent 78%),
+    color-mix(in srgb, var(--vision-glass-soft) 82%, transparent);
+  border-style: solid;
+  color: var(--muted);
+}
+
+.message strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--vision-stroke);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vision-glass-strong) 65%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+input,
+select,
+textarea {
+  border-color: var(--vision-stroke);
+  background: color-mix(in srgb, var(--vision-glass-strong) 84%, var(--input-bg));
+  box-shadow: 0 1px 0 var(--vision-stroke-bright) inset;
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  outline: 2px solid color-mix(in srgb, var(--future-accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.primary-btn,
+.secondary-btn,
+.theme-toggle {
+  border-radius: 999px;
+}
+
+.primary-btn {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 18px 35px color-mix(in srgb, var(--future-accent) 24%, transparent);
+}
+
+.side-tools.chat-tools {
+  margin: 0 18px 18px;
+  border-radius: 28px;
+}
+
+.side-tools.chat-tools > summary {
+  border-radius: 28px;
+}
+
+.hint-dot {
+  box-shadow: 0 1px 0 var(--vision-stroke-bright) inset;
+}
+
+@media (max-width: 680px) {
+  .topbar {
+    border-radius: 24px;
+  }
+
+  .room-hero,
+  .primary-chat,
+  .room-side-panel {
+    border-radius: 24px;
+  }
+
+  .room-side-panel {
+    position: static;
+  }
+
+  .primary-chat .private-main-composer,
+  .side-tools.chat-tools {
+    margin: 0 12px 12px;
+    border-radius: 22px;
+  }
+}

@@ -244,6 +244,7 @@ async function handleApi(req, res, url) {
         ai: true,
       });
       await distributeMediatedUpdate(room, text, author);
+      addAuthorDistributionNotice(room, author);
       updateMap(room, text);
       moveProgress(room, 5);
     }
@@ -549,6 +550,18 @@ function addParticipantActivityNotices(room, author) {
   }
 }
 
+function addAuthorDistributionNotice(room, author) {
+  const recipients = room.participants.filter((name) => name && name !== author);
+  if (!recipients.length) return;
+  const conversation = ensurePrivateConversation(room, author);
+  conversation.push({
+    author: "AI mediátor",
+    text: `Ostatní strany jsem informoval, že se mnou právě komunikujete. Každému z nich předávám jen bezpečnější a srozumitelnější verzi podstaty, ne nutně vaše doslovné znění.`,
+    ai: true,
+    activity: true,
+  });
+}
+
 async function mediatedRecipientUpdate(room, text, author, recipient) {
   if (openaiApiKey) {
     try {
@@ -653,6 +666,8 @@ async function openaiPrivateMediatorReply(room, text, author) {
             "Tvým cílem je pomoci mu uklidnit situaci, pojmenovat potřeby, rozlišit fakta a interpretace, představit možný pohled druhé strany a připravit bezpečné formulace pro komunikaci mezi stranami.",
             "Odpovídej česky, empaticky, živě a povzbudivě. Nezněj stroze ani sportovně-direktivně.",
             "Nabízej několik variant formulace, aby si účastník mohl vybrat tón, který je mu blízký.",
+            "V každé odpovědi rozlišuj dvě věci: co je soukromá podpora pro tohoto účastníka a co je podstata, kterou lze bezpečně předat ostatním stranám.",
+            "Pokud účastník píše něco, co je zjevně jen ventilace nebo nejistota, nejprve mu pomoz porozumět tomu, co opravdu chce adresovat ostatním.",
             "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
             styleInstruction(room),
           ].join(" "),
@@ -754,7 +769,7 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    `Odpověz soukromě. Nejdřív lidsky pojmenuj, co slyšíš jako potřebu. Pak opatrně nabídni možnou perspektivu druhé strany. Nakonec navrhni ${settings.variants} různé formulace, které by účastník mohl, pokud chce, sdílet. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
+    `Odpověz soukromě. Použij krátké oddíly: 1. "Co slyším u vás" - lidsky pojmenuj potřebu nebo emoci. 2. "Co bych předal/a ostatním" - řekni, jakou podstatu by mediátor bezpečně komunikoval druhým stranám. 3. "Možné formulace" - navrhni ${settings.variants} různé formulace. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
   ].join("\n");
 }
 
@@ -838,13 +853,20 @@ function fallbackPrivateMediatorReply(room, text, author) {
   const variants = Math.max(1, Math.min(3, settings.variants));
 
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu")) {
-    return `Tady nejste v běžném společném chatu. Tohle je váš prostor s mediátorem. Pomůžu vám ujasnit váš pohled a ostatním stranám podle potřeby předám bezpečnější verzi toho, co je důležité. Začněme jednoduše: co je pro vás v téhle situaci nejdůležitější?`;
+    return [
+      "Co slyším u vás: chcete pochopit, k čemu tenhle prostor slouží a co se s vašimi slovy bude dít.",
+      `Co bych předal/a ostatním: ${author} si teď ujasňuje, jak bezpečně používat mediaci, a zatím nepřináší konkrétní návrh k dohodě.`,
+      "Možné formulace:",
+      "1. „Nejdřív si potřebuji ujasnit, jak tenhle proces funguje.“",
+      "2. „Chci mluvit otevřeně, ale zároveň nechci, aby se moje slova zbytečně vyhrotila.“",
+      "3. „Pomůže mi vědět, co se bude předávat ostatním a co zůstává jen jako práce s mediátorem.“",
+    ].join("\n");
   }
 
   if (lower.includes("štve") || lower.includes("stve") || lower.includes("vadí") || lower.includes("nechci") || lower.includes("bojím")) {
     return [
-      "Slyším v tom silnou hranici nebo obavu. To je důležitý signál, ne chyba. Zkusme ji přeložit z pozice „proti něčemu“ do potřeby, která se dá sdílet bezpečněji.",
-      `Možná perspektiva ${otherLabel}: nemusí nutně odmítat vaši potřebu, může se bát ztráty autonomie, tlaku nebo další kontroly.`,
+      "Co slyším u vás: je tam silná hranice nebo obava. To je důležitý signál, ne chyba.",
+      `Co bych předal/a ostatním: ${author} potřebuje, aby se jeho/její hranice brala vážně, ale chce ji formulovat tak, aby nezněla jako útok. Možná perspektiva ${otherLabel}: nemusí nutně odmítat vaši potřebu, může se bát ztráty autonomie, tlaku nebo další kontroly.`,
       "",
       "Možné formulace:",
       ...[
@@ -856,12 +878,19 @@ function fallbackPrivateMediatorReply(room, text, author) {
   }
 
   if (lower.includes("souhlas") || lower.includes("možná") || lower.includes("mozna")) {
-    return `Tohle je dobrý moment pro most. Zkuste pojmenovat, s čím souhlasíte, a hned dodat svoji podmínku férovosti. Například: „Souhlasím, že nechceme další zbytečný proces. Zároveň potřebuji jednoduché pravidlo, aby se odpovědnosti neměnily bez potvrzení.“`;
+    return [
+      "Co slyším u vás: objevuje se ochota hledat most, ale nejspíš potřebujete doplnit podmínku férovosti.",
+      `Co bych předal/a ostatním: ${author} vidí část, se kterou může souhlasit, a zároveň potřebuje jasně pojmenovat, co musí platit, aby dohoda byla bezpečná.`,
+      "Možné formulace:",
+      "1. „Souhlasím, že nechceme další zbytečný proces. Zároveň potřebuji jednoduché pravidlo, aby se odpovědnosti neměnily bez potvrzení.“",
+      "2. „Tady se umíme potkat. Potřebuju jen doplnit, podle čeho poznáme, že dohoda opravdu platí.“",
+      "3. „Vidím společný směr. Pojďme ho převést do jednoho konkrétního pravidla.“",
+    ].join("\n");
   }
 
   return [
-    `${author}, rozumím. Slyším v tom potřebu, aby vás druhá strana opravdu pochopila a aby dohoda nebyla jen formální, ale použitelná.`,
-    `Možná perspektiva ${otherLabel}: nemusí jít o odmítnutí vaší potřeby, ale o jinou obavu, tempo nebo způsob komunikace.`,
+    `Co slyším u vás: chcete, aby vás druhá strana opravdu pochopila a aby dohoda nebyla jen formální, ale použitelná.`,
+    `Co bych předal/a ostatním: ${author} přináší nový pohled, který stojí za klidné vyslechnutí. Možná perspektiva ${otherLabel}: nemusí jít o odmítnutí vaší potřeby, ale o jinou obavu, tempo nebo způsob komunikace.`,
     "",
     "Možné formulace:",
     ...[

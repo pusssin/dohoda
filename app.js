@@ -624,9 +624,14 @@ function listTool(title, items) {
 
 function messageView(message) {
   const mine = message.me || message.author === state.sessionName;
+  const label = message.mediatedFrom
+    ? `Mediovaný přenos od ${message.mediatedFrom}`
+    : message.activity
+      ? "Aktivita v mediaci"
+      : message.author;
   return `
     <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""}">
-      <strong>${escapeHtml(message.author)}</strong>
+      <strong>${escapeHtml(label)}</strong>
       <p>${escapeHtml(message.text)}</p>
     </article>
   `;
