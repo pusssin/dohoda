@@ -10,6 +10,7 @@ const state = {
   theme: localStorage.getItem("dohoda.theme") || "light",
   online: false,
   aiConfigured: false,
+  databaseConfigured: false,
   profiles: [
     {
       id: "u1",
@@ -905,6 +906,7 @@ async function loadRemoteState() {
       state.rooms = data.rooms;
       state.online = true;
       state.aiConfigured = Boolean(data.aiConfigured);
+      state.databaseConfigured = Boolean(data.databaseConfigured);
     }
   } catch {
     state.online = false;

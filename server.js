@@ -8,6 +8,9 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "0.0.0.0";
 const openaiApiKey = process.env.OPENAI_API_KEY || "";
 const openaiModel = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+let sqlClient;
+let databaseReady;
 
 const store = {
   rooms: [
@@ -99,6 +102,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
+      await loadPersistentStore();
       await handleApi(req, res, url);
       return;
     }
@@ -115,7 +119,21 @@ server.listen(port, host, () => {
 
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/state") {
-    sendJson(res, 200, { ...store, aiConfigured: Boolean(openaiApiKey) });
+    sendJson(res, 200, {
+      ...store,
+      aiConfigured: Boolean(openaiApiKey),
+      databaseConfigured: Boolean(databaseUrl),
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/health") {
+    sendJson(res, 200, {
+      ok: true,
+      aiConfigured: Boolean(openaiApiKey),
+      databaseConfigured: Boolean(databaseUrl),
+      rooms: store.rooms.length,
+    });
     return;
   }
 
@@ -157,6 +175,7 @@ async function handleApi(req, res, url) {
       agreement: "",
     };
     store.rooms.unshift(room);
+    await savePersistentStore();
     sendJson(res, 200, { room, store });
     return;
   }
@@ -227,6 +246,7 @@ async function handleApi(req, res, url) {
       room.updated = "obnoveno";
     }
 
+    await savePersistentStore();
     sendJson(res, 200, { room, store });
     return;
   }
@@ -280,6 +300,76 @@ function sendJson(res, status, payload) {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(payload));
+}
+
+async function getSqlClient() {
+  if (!databaseUrl) return null;
+  if (sqlClient) return sqlClient;
+  let neon;
+  try {
+    ({ neon } = require("@neondatabase/serverless"));
+  } catch (error) {
+    throw new Error("DATABASE_URL je nastavené, ale chybí balíček @neondatabase/serverless.");
+  }
+  sqlClient = neon(databaseUrl);
+  return sqlClient;
+}
+
+async function ensureDatabase() {
+  if (!databaseUrl) return null;
+  const sql = await getSqlClient();
+  if (!databaseReady) {
+    databaseReady = (async () => {
+      await sql.query(`
+        CREATE TABLE IF NOT EXISTS dohoda_state (
+          id text PRIMARY KEY,
+          data jsonb NOT NULL,
+          updated_at timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await sql.query(
+        `
+          INSERT INTO dohoda_state (id, data)
+          VALUES ($1, $2::jsonb)
+          ON CONFLICT (id) DO NOTHING
+        `,
+        ["main", JSON.stringify({ rooms: store.rooms })],
+      );
+    })();
+  }
+  await databaseReady;
+  return sql;
+}
+
+async function loadPersistentStore() {
+  const sql = await ensureDatabase();
+  if (!sql) return;
+  const result = await sql.query("SELECT data FROM dohoda_state WHERE id = $1", ["main"]);
+  const rows = queryRows(result);
+  const data = rows[0]?.data;
+  if (data && Array.isArray(data.rooms)) {
+    store.rooms = data.rooms;
+  }
+}
+
+async function savePersistentStore() {
+  const sql = await ensureDatabase();
+  if (!sql) return;
+  await sql.query(
+    `
+      INSERT INTO dohoda_state (id, data, updated_at)
+      VALUES ($1, $2::jsonb, now())
+      ON CONFLICT (id)
+      DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+    `,
+    ["main", JSON.stringify({ rooms: store.rooms })],
+  );
+}
+
+function queryRows(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.rows)) return result.rows;
+  return [];
 }
 
 function loadLocalEnv(filePath) {

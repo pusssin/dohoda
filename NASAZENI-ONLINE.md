@@ -34,14 +34,39 @@ Postup:
 
 Bez `OPENAI_API_KEY` aplikace stale bezi, ale pouziva jen jednoduche demo odpovedi.
 
+## Vercel + Neon databaze
+
+Vercel Postgres se pro nove projekty nyni resi pres externi Postgres integrace.
+Nejjednodussi cesta je Neon Postgres z Vercel Marketplace.
+
+Postup:
+
+1. Ve Vercelu otevri projekt `dohoda`.
+2. Otevri `Storage` nebo `Marketplace`.
+3. Vyber `Neon Postgres`.
+4. Pripoj databazi k projektu.
+5. Zkontroluj, ze Vercel do projektu pridal `DATABASE_URL`.
+6. V `Settings -> Environment Variables` pridej jeste:
+
+   ```bash
+   OPENAI_API_KEY=sk-proj-...
+   OPENAI_MODEL=gpt-4.1-mini
+   ```
+
+7. Spust novy deployment.
+
+Aplikace si pri prvnim API pozadavku sama vytvori tabulku `dohoda_state`.
+Pokud `DATABASE_URL` neni nastavene, aplikace porad funguje v pameti serveru,
+ale data se mohou ztratit po restartu nebo novem deploymentu.
+
 ## Dulezite omezeni prototypu
 
-Aktualni verze uklada mistnosti jen do pameti serveru. To je pro prvni demo v poradku,
-ale po restartu hostingu se data ztrati. Pro skutecnou aplikaci bude dalsi krok databaze.
+Pokud je nastavene `DATABASE_URL`, mistnosti se ukladaji do Postgres/Neon databaze.
+Bez `DATABASE_URL` se mistnosti ukladaji jen do pameti serveru, coz je pro prvni demo
+v poradku, ale po restartu hostingu se data ztrati.
 
 Minimalni dalsi krok pro realne pouziti:
 
-- databaze pro mistnosti, ucastniky a soukrome chaty
 - prihlaseni nebo aspon bezpecne vstupni tokeny do mistnosti
 - oddeleni soukromych rozhovoru jednotlivych ucastniku na urovni serveru
 - produkcni nastaveni AI modelu pres `OPENAI_API_KEY`
