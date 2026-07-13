@@ -12,6 +12,7 @@ const state = {
   aiConfigured: false,
   databaseConfigured: false,
   requestInProgress: false,
+  advancedOpen: false,
   profiles: [
     {
       id: "u1",
@@ -405,7 +406,7 @@ function renderRoom() {
           </form>
         </section>
 
-        <details class="advanced-room-drawer">
+        <details class="advanced-room-drawer" ${state.advancedOpen ? "open" : ""}>
           <summary>
             <span>Další možnosti</span>
             <small>mapa, návrh dohody, společný chat, pozvánka</small>
@@ -644,6 +645,13 @@ function messageView(message) {
 
 function bindRoomEvents(room, inviteUrl) {
   document.getElementById("backToProfile").addEventListener("click", () => route("profile"));
+
+  const advancedDrawer = document.querySelector(".advanced-room-drawer");
+  if (advancedDrawer) {
+    advancedDrawer.addEventListener("toggle", () => {
+      state.advancedOpen = advancedDrawer.open;
+    });
+  }
 
   document.querySelectorAll("[data-tool]").forEach((button) => {
     button.addEventListener("click", () => {
