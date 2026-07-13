@@ -236,6 +236,8 @@ async function handleApi(req, res, url) {
       const text = body.text || "";
       const conversation = ensurePrivateConversation(room, author);
       conversation.push({ author, text });
+      addParticipantActivityNotices(room, author);
+      await savePersistentStore();
       conversation.push({
         author: "AI mediátor",
         text: await privateMediatorReply(room, text, author),
@@ -458,7 +460,7 @@ function ensureRoomDefaults(room) {
 }
 
 function sanitizeMediationSettings(settings) {
-  const style = ["warm", "calm", "clear", "direct"].includes(settings.style)
+  const style = ["warm", "calm", "clear", "direct", "authentic"].includes(settings.style)
     ? settings.style
     : defaultMediationSettings.style;
   const variants = Math.max(1, Math.min(3, Number(settings.variants || defaultMediationSettings.variants)));
@@ -530,6 +532,19 @@ async function distributeMediatedUpdate(room, text, author) {
       text: mediatedText,
       ai: true,
       mediatedFrom: author,
+    });
+  }
+}
+
+function addParticipantActivityNotices(room, author) {
+  const recipients = room.participants.filter((name) => name && name !== author);
+  for (const recipient of recipients) {
+    const conversation = ensurePrivateConversation(room, recipient);
+    conversation.push({
+      author: "AI mediátor",
+      text: `${author} právě komunikuje s mediátorem. Jakmile bude podstata sdělení připravená bezpečně pro ostatní strany, uvidíte ji tady v přerámované podobě.`,
+      ai: true,
+      activity: true,
     });
   }
 }

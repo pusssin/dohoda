@@ -1783,6 +1783,15 @@ textarea {
   border-style: dashed;
 }
 
+.message.activity {
+  max-width: 100%;
+  border-style: dashed;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 10%, transparent), transparent 72%),
+    var(--future-panel);
+  color: var(--muted);
+}
+
 .advanced-room-drawer {
   border-radius: 16px;
   background: color-mix(in srgb, var(--surface-glass) 72%, transparent);

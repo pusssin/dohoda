@@ -427,7 +427,6 @@ function renderRoom() {
               <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
               <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
             </div>
-            ${testAccessPanel(room)}
           </aside>
         </div>
       </div>
@@ -448,20 +447,6 @@ function mediationSettings(room) {
     adaptToRecipient: room.mediationSettings?.adaptToRecipient !== false,
     variants: Number(room.mediationSettings?.variants || 3),
   };
-}
-
-function testAccessPanel(room) {
-  const first = room.participants[0] || state.sessionName || "Strana A";
-  const second = room.participants.find((name) => name !== first) || "Strana B";
-  const base = `${location.origin}${location.pathname}`;
-  return `
-    <div class="invite-box test-access">
-      <strong>Test dvou stran</strong>
-      <p class="meta">Otevřete dva odkazy ve dvou oknech nebo anonymním okně.</p>
-      <a class="test-link" href="${base}?participant=${encodeURIComponent(first)}#${room.id}" target="_blank" rel="noreferrer">Otevřít jako ${escapeHtml(first)}</a>
-      <a class="test-link" href="${base}?participant=${encodeURIComponent(second)}#${room.id}" target="_blank" rel="noreferrer">Otevřít jako ${escapeHtml(second)}</a>
-    </div>
-  `;
 }
 
 function mediationSettingsPanel(room) {
@@ -640,7 +625,7 @@ function listTool(title, items) {
 function messageView(message) {
   const mine = message.me || message.author === state.sessionName;
   return `
-    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""}">
+    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""}">
       <strong>${escapeHtml(message.author)}</strong>
       <p>${escapeHtml(message.text)}</p>
     </article>
