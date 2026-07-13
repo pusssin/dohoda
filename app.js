@@ -394,8 +394,8 @@ function renderRoom() {
             <div class="section-title">
               <div>
                 <p class="room-kicker">Hlavní prostor</p>
-                <h2>Můj rozhovor s AI mediátorem</h2>
-                <p class="meta">Vy vidíte vlastní slova přesně tak, jak je napíšete. Ostatním stranám mediátor podle potřeby předá bezpečnější a srozumitelnější verzi.</p>
+                <h2>${escapeHtml(state.sessionName)} + AI mediátor</h2>
+                <p class="meta">Vaše slova se vám uloží přesně tak, jak je napíšete. Ostatním účastníkům mediátor ukáže bezpečnější podstatu a pojmenuje, jaké téma se právě řeší.</p>
               </div>
               <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
             </div>
@@ -630,7 +630,7 @@ function messageView(message) {
       ? "Aktivita v mediaci"
       : message.author;
   return `
-    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""}">
+    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}">
       <strong>${escapeHtml(label)}</strong>
       <p>${escapeHtml(message.text)}</p>
     </article>
@@ -690,7 +690,12 @@ function bindRoomEvents(room, inviteUrl) {
     state.requestInProgress = true;
     const conversation = ensureClientPrivateConversation(room, author);
     conversation.push({ author, text });
-    conversation.push({ author: "AI mediátor", text: "AI mediátor píše odpověď...", ai: true, pending: true });
+    conversation.push({
+      author: "AI mediátor",
+      text: "AI mediátor připravuje odpověď pro vás a bezpečný přenos podstaty pro ostatní účastníky...",
+      ai: true,
+      pending: true,
+    });
     textarea.value = "";
     renderRoom();
     try {
@@ -855,9 +860,9 @@ function conflictStage(progress) {
 
 function conflictTheme(room) {
   const progress = Math.max(0, Math.min(100, room.progress ?? 0));
-  const red = [166, 77, 77];
-  const amber = [170, 119, 47];
-  const green = [47, 111, 94];
+  const red = [196, 83, 90];
+  const amber = [190, 147, 75];
+  const green = [78, 151, 124];
   const firstHalf = progress < 50;
   const from = firstHalf ? red : amber;
   const to = firstHalf ? amber : green;

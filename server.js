@@ -236,14 +236,16 @@ async function handleApi(req, res, url) {
       const text = body.text || "";
       const conversation = ensurePrivateConversation(room, author);
       conversation.push({ author, text });
-      addParticipantActivityNotices(room, author);
+      addParticipantActivityNotices(room, author, text);
       await savePersistentStore();
+      const privateReplyPromise = privateMediatorReply(room, text, author);
+      const distributionPromise = distributeMediatedUpdate(room, text, author);
       conversation.push({
         author: "AI mediátor",
-        text: await privateMediatorReply(room, text, author),
+        text: await privateReplyPromise,
         ai: true,
       });
-      await distributeMediatedUpdate(room, text, author);
+      await distributionPromise;
       addAuthorDistributionNotice(room, author);
       updateMap(room, text);
       moveProgress(room, 5);
@@ -537,13 +539,14 @@ async function distributeMediatedUpdate(room, text, author) {
   }
 }
 
-function addParticipantActivityNotices(room, author) {
+function addParticipantActivityNotices(room, author, text = "") {
   const recipients = room.participants.filter((name) => name && name !== author);
+  const topic = mediationActivityTopic(text);
   for (const recipient of recipients) {
     const conversation = ensurePrivateConversation(room, recipient);
     conversation.push({
       author: "AI mediátor",
-      text: `${author} právě komunikuje s mediátorem. Jakmile bude podstata sdělení připravená bezpečně pro ostatní strany, uvidíte ji tady v přerámované podobě.`,
+      text: `${author} právě komunikuje s mediátorem. Téma: ${topic}. Připravuji bezpečnou verzi podstaty pro ostatní strany.`,
       ai: true,
       activity: true,
     });
@@ -571,6 +574,31 @@ async function mediatedRecipientUpdate(room, text, author, recipient) {
     }
   }
   return fallbackRecipientBridgeReply(room, text, author, recipient);
+}
+
+function mediationActivityTopic(text) {
+  const clean = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const lower = clean.toLowerCase();
+  if (!clean) return "nový vstup k dohodě";
+  if (lower.includes("ignor") || lower.includes("nereag") || lower.includes("neodpov")) {
+    return "potřeba nebýt přehlížen/a a dostat srozumitelnou reakci";
+  }
+  if (lower.includes("odpověd") || lower.includes("zodpověd") || lower.includes("rozhod")) {
+    return "jasnější odpovědnosti, rozhodování a hranice rolí";
+  }
+  if (lower.includes("štve") || lower.includes("stve") || lower.includes("vadí")) {
+    return "silná hranice nebo věc, která už začíná zraňovat";
+  }
+  if (lower.includes("nechci") || lower.includes("bojím") || lower.includes("obav")) {
+    return "obava nebo hranice, kterou je potřeba pojmenovat bezpečněji";
+  }
+  if (lower.includes("termín") || lower.includes("termin") || lower.includes("kdy")) {
+    return "termíny, závazky a konkrétní další kroky";
+  }
+  const preview = clean.length > 120 ? `${clean.slice(0, 117)}...` : clean;
+  return `nový pohled k tématu dohody: „${preview}“`;
 }
 
 async function openaiMediatorReply(room, text, author) {
