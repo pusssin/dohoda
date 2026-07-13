@@ -13,6 +13,7 @@ const state = {
   databaseConfigured: false,
   requestInProgress: false,
   advancedOpen: false,
+  inviteToken: new URLSearchParams(location.search).get("invite") || "",
   profiles: [
     {
       id: "u1",
@@ -221,7 +222,7 @@ function renderProfile() {
   document.querySelectorAll("[data-copy-link]").forEach((button) => {
     button.addEventListener("click", async () => {
       const roomId = button.dataset.copyLink;
-      const copied = await copyText(`${location.origin}${location.pathname}?join=1#${roomId}`, "Pozvánka zkopírována");
+      const copied = await copyText(inviteLink(state.rooms.find((room) => room.id === roomId)), "Pozvánka zkopírována");
       flashButton(button, copied ? "Zkopírováno" : "Označeno");
     });
   });
@@ -270,7 +271,7 @@ function renderJoinRoom(room) {
     if (!name) return;
     try {
       setSessionName(name);
-      await apiAction(`/api/rooms/${room.id}/join`, { name });
+      await apiAction(`/api/rooms/${room.id}/join`, { name, invite: state.inviteToken });
       await loadRemoteState();
       route("room", room.id);
     } catch {
@@ -366,7 +367,7 @@ function renderRoom() {
     return;
   }
   const theme = conflictTheme(room);
-  const inviteUrl = `${location.origin}${location.pathname}?join=1#${room.id}`;
+  const inviteUrl = inviteLink(room);
   app.innerHTML = `
     ${topbar()}
     <section class="room-shell minimal-room" style="${theme.style}">
@@ -399,6 +400,7 @@ function renderRoom() {
               </div>
               <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
             </div>
+            ${mediationProcessPanel(room)}
             ${privateBridgePanel(room)}
             <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message) => messageView({ ...message, me: !message.ai })).join("")}</div>
             <form id="privateMediatorForm" class="composer private-main-composer">
@@ -412,6 +414,7 @@ function renderRoom() {
               </div>
               <div class="tabs">
                 ${toolTab("map", "Mapa")}
+                ${toolTab("diary", "Deník")}
                 ${toolTab("bridge", "Most")}
                 ${toolTab("forms", "Formuláře")}
                 ${toolTab("agreement", "Dohoda")}
@@ -518,6 +521,27 @@ function ensureClientPrivateConversation(room, author) {
   return room.privateConversations[author];
 }
 
+function mediationProcessPanel(room) {
+  const stages = [
+    ["Vstupní mapování", "pohledy"],
+    ["Pojmenování potřeb", "potřeby"],
+    ["Hledání mostu", "most"],
+    ["Návrh dohody", "dohoda"],
+    ["Kontrola dohody", "kontrola"],
+  ];
+  const activeIndex = Math.max(0, stages.findIndex(([label]) => label === room.stage));
+  return `
+    <div class="process-strip" aria-label="Proces mediace">
+      ${stages.map(([label, short], index) => `
+        <span class="${index <= activeIndex ? "active" : ""}">
+          <b>${index + 1}</b>
+          ${escapeHtml(short)}
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
 function privateBridgePanel(room) {
   const others = room.participants.filter((name) => name !== state.sessionName);
   const otherLabel = others.length ? others.join(", ") : "pozvaná strana";
@@ -567,6 +591,24 @@ function toolContent(room) {
       ${listTool("Otevřené body", room.map.open)}
       ${listTool("Potřeby stran", room.map.needs)}
       <button id="summarizeRoom" class="secondary-btn" type="button">Aktualizovat analýzu</button>
+    `;
+  }
+
+  if (state.activeTool === "diary") {
+    const diary = Array.isArray(room.diary) ? room.diary.slice(-12).reverse() : [];
+    return `
+      <div class="tool-card mediation-diary">
+        <h3>Deník místnosti</h3>
+        <p class="meta">Neutrální stopa toho, co se v mediaci děje. Neobsahuje cizí soukromé texty.</p>
+        <div class="diary-list">
+          ${diary.length ? diary.map((item) => `
+            <article class="diary-item ${escapeHtml(item.type || "note")}">
+              <strong>${escapeHtml(item.author || "AI mediátor")}</strong>
+              <p>${escapeHtml(item.text || "")}</p>
+            </article>
+          `).join("") : `<p class="meta">Deník zatím čeká na první vstupy.</p>`}
+        </div>
+      </div>
     `;
   }
 
@@ -629,9 +671,11 @@ function messageView(message) {
     : message.activity
       ? "Aktivita v mediaci"
       : message.author;
+  const decision = message.decision ? `<small>${escapeHtml(message.decision)}</small>` : "";
   return `
     <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}">
       <strong>${escapeHtml(label)}</strong>
+      ${decision}
       <p>${escapeHtml(message.text)}</p>
     </article>
   `;
@@ -934,6 +978,12 @@ async function copyText(text, fallbackLabel) {
   return false;
 }
 
+function inviteLink(room) {
+  const targetRoomId = room?.id || state.activeRoomId;
+  const token = room?.inviteToken ? `&invite=${encodeURIComponent(room.inviteToken)}` : "";
+  return `${location.origin}${location.pathname}?join=1${token}#${targetRoomId}`;
+}
+
 function fallbackCopyText(text) {
   const input = document.createElement("textarea");
   input.value = text;
@@ -1009,7 +1059,9 @@ function setSessionName(name) {
 
 async function loadRemoteState() {
   try {
-    const response = await fetch("/api/state", { cache: "no-store" });
+    const params = new URLSearchParams();
+    if (state.sessionName) params.set("participant", state.sessionName);
+    const response = await fetch(`/api/state${params.toString() ? `?${params}` : ""}`, { cache: "no-store" });
     if (!response.ok) throw new Error("State unavailable");
     const data = await response.json();
     if (Array.isArray(data.rooms)) {
@@ -1024,10 +1076,14 @@ async function loadRemoteState() {
 }
 
 async function apiAction(path, payload) {
+  const bodyPayload = {
+    participant: state.sessionName || "",
+    ...payload,
+  };
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(bodyPayload),
   });
   if (!response.ok) {
     let message = "Odeslání se nepovedlo.";
@@ -1060,6 +1116,7 @@ async function start() {
 
 async function applyParticipantFromUrl() {
   const params = new URLSearchParams(location.search);
+  state.inviteToken = params.get("invite") || state.inviteToken;
   const participant = params.get("participant");
   if (!participant) return;
   const cleanName = participant.trim();
@@ -1069,7 +1126,7 @@ async function applyParticipantFromUrl() {
   const room = activeRoom();
   if (!room.participants.includes(cleanName)) {
     try {
-      await apiAction(`/api/rooms/${room.id}/join`, { name: cleanName });
+      await apiAction(`/api/rooms/${room.id}/join`, { name: cleanName, invite: state.inviteToken });
       await loadRemoteState();
     } catch {
       addToast("Testovací role se nepovedla připojit.");

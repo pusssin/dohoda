@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const root = __dirname;
 loadLocalEnv(path.join(root, ".env"));
@@ -43,6 +44,8 @@ const store = {
       progress: 18,
       archived: false,
       participants: ["Anna"],
+      inviteToken: "demo-team",
+      stage: "Vstupní mapování",
       mediationSettings: { ...defaultMediationSettings },
       privateConversations: {
         Anna: [
@@ -72,6 +75,13 @@ const store = {
         open: ["Čekáme na pohled pozvaných účastníků.", "Kdo má finální slovo u priorit."],
         needs: ["Anna: jasné hranice role a pravidla komunikace."],
       },
+      diary: [
+        {
+          author: "AI mediátor",
+          text: "Místnost je připravená pro oddělené soukromé vstupy účastníků.",
+          type: "system",
+        },
+      ],
       agreement: "",
     },
     {
@@ -83,6 +93,8 @@ const store = {
       progress: 8,
       archived: false,
       participants: ["Anna"],
+      inviteToken: "demo-family",
+      stage: "Vstupní mapování",
       mediationSettings: { ...defaultMediationSettings, style: "calm" },
       privateConversations: {
         Anna: [
@@ -108,6 +120,13 @@ const store = {
         open: ["Čekáme na pohled pozvaných účastníků.", "Rozdělení času.", "Finanční příspěvky."],
         needs: ["Anna: předvídatelnost."],
       },
+      diary: [
+        {
+          author: "AI mediátor",
+          text: "Místnost čeká na soukromé vstupy jednotlivých účastníků.",
+          type: "system",
+        },
+      ],
       agreement: "",
     },
   ],
@@ -161,8 +180,9 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/state") {
     normalizeStore();
+    const viewer = url.searchParams.get("participant") || "";
     sendJson(res, 200, {
-      ...store,
+      ...publicStoreFor(viewer),
       aiConfigured: Boolean(openaiApiKey),
       databaseConfigured: Boolean(databaseUrl),
     });
@@ -180,6 +200,8 @@ async function handleApi(req, res, url) {
       progress: 4,
       archived: false,
       participants: unique([body.author || "Zakladatel"]),
+      inviteToken: randomToken(),
+      stage: "Vstupní mapování",
       mediationSettings: { ...defaultMediationSettings },
       privateConversations: {
         [body.author || "Zakladatel"]: [
@@ -205,11 +227,18 @@ async function handleApi(req, res, url) {
         open: ["Čekáme na pohled dalších stran."],
         needs: ["Zakladatel chce strukturovaný proces."],
       },
+      diary: [
+        {
+          author: "AI mediátor",
+          text: "Místnost byla založena. Další krok: pozvat účastníky a získat jejich soukromé vstupy.",
+          type: "system",
+        },
+      ],
       agreement: "",
     };
     store.rooms.unshift(room);
     await savePersistentStore();
-    sendJson(res, 200, { room, store });
+    sendJson(res, 200, { room: publicRoomFor(room, body.author), store: publicStoreFor(body.author) });
     return;
   }
 
@@ -229,14 +258,17 @@ async function handleApi(req, res, url) {
         ensurePrivateConversation(room, body.name);
       }
       addAi(room, `${body.name || "Nový účastník"} se připojil do místnosti.`);
+      addDiary(room, "AI mediátor", `${body.name || "Nový účastník"} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
     }
 
     if (action === "private") {
       const author = body.author || "Účastník";
       const text = body.text || "";
       const conversation = ensurePrivateConversation(room, author);
-      conversation.push({ author, text });
+      const topic = mediationActivityTopic(text);
+      conversation.push({ author, text, decision: "Soukromý vstup účastníka" });
       addParticipantActivityNotices(room, author, text);
+      addDiary(room, "AI mediátor", `${author} právě řeší s mediátorem: ${topic}. Ostatní uvidí jen bezpečnou podstatu, ne syrový soukromý text.`, "private-topic");
       await savePersistentStore();
       const privateReplyPromise = privateMediatorReply(room, text, author);
       const distributionPromise = distributeMediatedUpdate(room, text, author);
@@ -244,6 +276,7 @@ async function handleApi(req, res, url) {
         author: "AI mediátor",
         text: await privateReplyPromise,
         ai: true,
+        decision: "Soukromá podpora a návrhy formulací",
       });
       await distributionPromise;
       addAuthorDistributionNotice(room, author);
@@ -271,6 +304,8 @@ async function handleApi(req, res, url) {
       room.agreement = makeAgreement(room);
       room.status = "Návrh dohody";
       room.progress = Math.max(room.progress, 86);
+      room.stage = "Návrh dohody";
+      addDiary(room, "AI mediátor", "Mediátor připravil pracovní návrh dohody z dosavadní mapy konfliktu.", "agreement");
     }
 
     if (action === "analysis") {
@@ -280,6 +315,7 @@ async function handleApi(req, res, url) {
       );
       updateMap(room, "souhlas termín hranice");
       moveProgress(room, 8);
+      addDiary(room, "AI mediátor", "Mapa dohody byla aktualizována: shoda, otevřené body a potřeby jsou připravené k další kontrole.", "analysis");
     }
 
     if (action === "archive") {
@@ -293,7 +329,8 @@ async function handleApi(req, res, url) {
     }
 
     await savePersistentStore();
-    sendJson(res, 200, { room, store });
+    const viewer = body.author || body.name || body.participant || "";
+    sendJson(res, 200, { room: publicRoomFor(room, viewer), store: publicStoreFor(viewer) });
     return;
   }
 
@@ -456,10 +493,42 @@ function normalizeStore() {
 function ensureRoomDefaults(room) {
   room.mediationSettings = sanitizeMediationSettings(room.mediationSettings || {});
   if (!room.privateConversations) room.privateConversations = {};
+  if (!room.inviteToken) room.inviteToken = randomToken();
+  if (!room.stage) room.stage = room.progress >= 80 ? "Návrh dohody" : room.progress >= 45 ? "Hledání mostu" : "Vstupní mapování";
+  if (!Array.isArray(room.diary)) {
+    room.diary = [
+      {
+        author: "AI mediátor",
+        text: "Místnost je připravená. Mediátor odděluje soukromé vstupy od bezpečných sdělení pro ostatní.",
+        type: "system",
+      },
+    ];
+  }
   if (!room.map) room.map = { shared: [], open: [], needs: [] };
   if (!Array.isArray(room.map.shared)) room.map.shared = [];
   if (!Array.isArray(room.map.open)) room.map.open = [];
   if (!Array.isArray(room.map.needs)) room.map.needs = [];
+}
+
+function publicStoreFor(viewer = "") {
+  normalizeStore();
+  return {
+    rooms: store.rooms.map((room) => publicRoomFor(room, viewer)),
+  };
+}
+
+function publicRoomFor(room, viewer = "") {
+  ensureRoomDefaults(room);
+  const safeRoom = { ...room };
+  const name = String(viewer || "").trim();
+  const privateConversations = {};
+  if (name) {
+    privateConversations[name] = room.privateConversations?.[name] || [];
+  } else {
+    safeRoom.inviteToken = "";
+  }
+  safeRoom.privateConversations = privateConversations;
+  return safeRoom;
 }
 
 function sanitizeMediationSettings(settings) {
@@ -481,6 +550,21 @@ function unique(items) {
 
 function addAi(room, text) {
   room.messages.push({ author: "AI mediátor", text, ai: true });
+}
+
+function addDiary(room, author, text, type = "note") {
+  ensureRoomDefaults(room);
+  room.diary.push({
+    author,
+    text,
+    type,
+    at: new Date().toISOString(),
+  });
+  room.diary = room.diary.slice(-80);
+}
+
+function randomToken() {
+  return crypto.randomBytes(9).toString("base64url");
 }
 
 function ensurePrivateConversation(room, author) {
@@ -535,6 +619,7 @@ async function distributeMediatedUpdate(room, text, author) {
       text: mediatedText,
       ai: true,
       mediatedFrom: author,
+      decision: "Bezpečné shrnutí pro tohoto účastníka",
     });
   }
 }
@@ -549,6 +634,7 @@ function addParticipantActivityNotices(room, author, text = "") {
       text: `${author} právě komunikuje s mediátorem. Téma: ${topic}. Připravuji bezpečnou verzi podstaty pro ostatní strany.`,
       ai: true,
       activity: true,
+      decision: "Neutrální informace o probíhající mediaci",
     });
   }
 }
@@ -562,6 +648,7 @@ function addAuthorDistributionNotice(room, author) {
     text: `Ostatní strany jsem informoval, že se mnou právě komunikujete. Každému z nich předávám jen bezpečnější a srozumitelnější verzi podstaty, ne nutně vaše doslovné znění.`,
     ai: true,
     activity: true,
+    decision: "Potvrzení přenosu ostatním stranám",
   });
 }
 
@@ -695,6 +782,8 @@ async function openaiPrivateMediatorReply(room, text, author) {
             "Odpovídej česky, empaticky, živě a povzbudivě. Nezněj stroze ani sportovně-direktivně.",
             "Nabízej několik variant formulace, aby si účastník mohl vybrat tón, který je mu blízký.",
             "V každé odpovědi rozlišuj dvě věci: co je soukromá podpora pro tohoto účastníka a co je podstata, kterou lze bezpečně předat ostatním stranám.",
+            "Vždy výslovně pojmenuj mediační rozhodnutí: co zůstává soukromé, co lze předat jako shrnutí a co zatím nepředávat.",
+            "Drž fázi mediace. Pokud je proces na začátku, nepředbíhej k dohodě; nejprve mapuj fakta, emoce, potřeby a hranice.",
             "Pokud účastník píše něco, co je zjevně jen ventilace nebo nejistota, nejprve mu pomoz porozumět tomu, co opravdu chce adresovat ostatním.",
             "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
             styleInstruction(room),
@@ -783,6 +872,7 @@ function buildPrivateMediatorContext(room, text, author) {
     `Styl mediace: ${settings.style}`,
     `Počet navržených formulací: ${settings.variants}`,
     `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
+    `Fáze mediace: ${room.stage || "Vstupní mapování"}`,
     "",
     "Mapa konfliktu:",
     `Body shody: ${room.map.shared.join("; ")}`,
@@ -797,7 +887,7 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    `Odpověz soukromě. Použij krátké oddíly: 1. "Co slyším u vás" - lidsky pojmenuj potřebu nebo emoci. 2. "Co bych předal/a ostatním" - řekni, jakou podstatu by mediátor bezpečně komunikoval druhým stranám. 3. "Možné formulace" - navrhni ${settings.variants} různé formulace. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
+    `Odpověz soukromě. Použij krátké oddíly: 1. "Co slyším u vás" - lidsky pojmenuj potřebu nebo emoci. 2. "Mediační rozhodnutí" - napiš, co zůstává soukromé, co lze předat ostatním jako shrnutí a co zatím nepředávat. 3. "Co bych předal/a ostatním" - řekni bezpečnou podstatu. 4. "Možné formulace" - navrhni ${settings.variants} různé formulace. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
   ].join("\n");
 }
 
@@ -829,6 +919,7 @@ function buildRecipientBridgeContext(room, text, author, recipient) {
       `Napiš zprávu pro ${recipient}.`,
       "Začni stručně: kdo přinesl nový pohled a o čem zhruba je.",
       "Pak přelož sdělení do bezpečnější řeči pro adresáta.",
+      "Ujisti adresáta, že nejde o doslovný přepis soukromého chatu, ale o bezpečnou podstatu.",
       "Na konci přidej jednu otázku nebo malý krok, který pomůže porozumění.",
       settings.style === "authentic"
         ? "Protože je zvolen autentický styl, zachovej víc původní energie autora, ale bez zbytečného útoku."
@@ -950,9 +1041,21 @@ function updateMap(room, text) {
 
 function moveProgress(room, amount) {
   room.progress = Math.min(96, Math.max(0, room.progress + amount));
-  if (room.progress >= 80) room.status = "Blízko dohody";
-  else if (room.progress >= 45) room.status = "V procesu";
-  else if (room.progress >= 18) room.status = "Zklidňování";
+  if (room.progress >= 86) {
+    room.status = "Blízko dohody";
+    room.stage = "Kontrola dohody";
+  } else if (room.progress >= 70) {
+    room.status = "Návrh dohody";
+    room.stage = "Návrh dohody";
+  } else if (room.progress >= 45) {
+    room.status = "V procesu";
+    room.stage = "Hledání mostu";
+  } else if (room.progress >= 18) {
+    room.status = "Zklidňování";
+    room.stage = "Pojmenování potřeb";
+  } else {
+    room.stage = "Vstupní mapování";
+  }
 }
 
 function addUnique(list, item) {
