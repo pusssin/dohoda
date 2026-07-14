@@ -10,6 +10,13 @@ const host = process.env.HOST || "0.0.0.0";
 const openaiApiKey = process.env.OPENAI_API_KEY || "";
 const openaiModel = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+const publicUrl = (process.env.PUBLIC_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "").replace(/\/$/, "");
+const adminEmails = String(process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
 let sqlClient;
 let databaseReady;
 
@@ -45,6 +52,9 @@ const mediationPlaybook = [
 ].join(" ");
 
 const store = {
+  users: [],
+  sessions: {},
+  oauthStates: {},
   rooms: [
     {
       id: "room-team",
@@ -157,6 +167,16 @@ const app = async (req, res) => {
       await handleApi(req, res, url);
       return;
     }
+    if (url.pathname === "/auth/google") {
+      await loadPersistentStore();
+      await startGoogleAuth(req, res);
+      return;
+    }
+    if (url.pathname === "/auth/google/callback") {
+      await loadPersistentStore();
+      await finishGoogleAuth(req, res, url);
+      return;
+    }
     serveStatic(res, url.pathname);
   } catch (error) {
     sendJson(res, 500, { error: "Server error", detail: error.message });
@@ -183,25 +203,41 @@ async function handleApi(req, res, url) {
       databaseOk: database.ok,
       databaseError: database.error,
       rooms: store.rooms.length,
+      authUsers: store.users.length,
+      googleConfigured: Boolean(googleClientId && googleClientSecret),
     });
     return;
   }
 
   await loadPersistentStore();
 
+  if (url.pathname.startsWith("/api/auth/")) {
+    await handleAuthApi(req, res, url);
+    return;
+  }
+
+  const currentUser = getCurrentUser(req);
+  if (!currentUser) {
+    sendJson(res, 401, { error: "Přihlášení je nutné." });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/state") {
     normalizeStore();
-    const viewer = url.searchParams.get("participant") || "";
+    const viewer = currentUser.name;
     sendJson(res, 200, {
-      ...publicStoreFor(viewer),
+      ...publicStoreFor(viewer, currentUser),
       aiConfigured: Boolean(openaiApiKey),
       databaseConfigured: Boolean(databaseUrl),
+      authUser: publicUser(currentUser),
+      googleConfigured: Boolean(googleClientId && googleClientSecret),
     });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/rooms") {
     const body = await readJson(req);
+    const author = currentUser.name;
     const room = {
       id: `room-${Date.now().toString(36)}`,
       title: body.title || "Nový konflikt",
@@ -210,12 +246,13 @@ async function handleApi(req, res, url) {
       updated: "teď",
       progress: 4,
       archived: false,
-      participants: unique([body.author || "Zakladatel"]),
+      ownerId: currentUser.id,
+      participants: unique([author]),
       inviteToken: randomToken(),
       stage: "Vstupní mapování",
       mediationSettings: { ...defaultMediationSettings },
       privateConversations: {
-        [body.author || "Zakladatel"]: [
+        [author]: [
           {
             author: "AI mediátor",
             text:
@@ -249,7 +286,7 @@ async function handleApi(req, res, url) {
     };
     store.rooms.unshift(room);
     await savePersistentStore();
-    sendJson(res, 200, { room: publicRoomFor(room, body.author), store: publicStoreFor(body.author) });
+    sendJson(res, 200, { room: publicRoomFor(room, author), store: publicStoreFor(author, currentUser) });
     return;
   }
 
@@ -263,22 +300,33 @@ async function handleApi(req, res, url) {
     const action = match[2];
     const body = await readJson(req);
 
+    if (action !== "join" && !canViewRoom(currentUser, room, currentUser.name)) {
+      sendJson(res, 403, { error: "Do této místnosti nemáte přístup." });
+      return;
+    }
+
     if (action === "join") {
-      const alreadyParticipant = body.name && room.participants.includes(body.name);
+      const invite = String(body.invite || "").trim();
+      if (room.inviteToken && invite !== room.inviteToken && !room.participants.includes(currentUser.name) && !currentUser.admin) {
+        sendJson(res, 403, { error: "Pozvánka do této místnosti není platná." });
+        return;
+      }
+      const joinName = currentUser.name || body.name;
+      const alreadyParticipant = joinName && room.participants.includes(joinName);
       if (room.locked && !alreadyParticipant) {
         sendJson(res, 403, { error: "Místnost je uzamčená pro nové účastníky." });
         return;
       }
-      if (body.name) {
-        room.participants = unique([...room.participants, body.name]);
-        ensurePrivateConversation(room, body.name);
+      if (joinName) {
+        room.participants = unique([...room.participants, joinName]);
+        ensurePrivateConversation(room, joinName);
       }
-      addAi(room, `${body.name || "Nový účastník"} se připojil do místnosti.`);
-      addDiary(room, "AI mediátor", `${body.name || "Nový účastník"} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
+      addAi(room, `${joinName || "Nový účastník"} se připojil do místnosti.`);
+      addDiary(room, "AI mediátor", `${joinName || "Nový účastník"} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
     }
 
     if (action === "private") {
-      const author = body.author || "Účastník";
+      const author = currentUser.name;
       const text = body.text || "";
       const conversation = ensurePrivateConversation(room, author);
       const topic = mediationActivityTopic(text);
@@ -301,7 +349,7 @@ async function handleApi(req, res, url) {
     }
 
     if (action === "messages") {
-      const author = body.author || "Účastník";
+      const author = currentUser.name;
       const text = body.text || "";
       room.messages.push({ author, text });
       addAi(room, await mediatorReply(room, text, author));
@@ -315,7 +363,7 @@ async function handleApi(req, res, url) {
         ...room.mediationSettings,
         ...body,
       });
-      const author = String(body.author || body.participant || body.name || "").trim();
+      const author = currentUser.name;
       if (author && room.mediationSettings.initiatorMode && !previousSettings.initiatorMode) {
         const conversation = ensurePrivateConversation(room, author);
         conversation.push({
@@ -348,37 +396,209 @@ async function handleApi(req, res, url) {
     }
 
     if (action === "archive") {
+      if (!canManageRoom(currentUser, room)) {
+        sendJson(res, 403, { error: "K této akci nemáte oprávnění." });
+        return;
+      }
       room.archived = true;
       room.updated = "archivováno";
     }
 
     if (action === "restore") {
+      if (!canManageRoom(currentUser, room)) {
+        sendJson(res, 403, { error: "K této akci nemáte oprávnění." });
+        return;
+      }
       room.archived = false;
       room.updated = "obnoveno";
     }
 
     if (action === "lock") {
+      if (!canManageRoom(currentUser, room)) {
+        sendJson(res, 403, { error: "K této akci nemáte oprávnění." });
+        return;
+      }
       room.locked = true;
       addDiary(room, "Admin", "Místnost byla uzamčena pro nové účastníky.", "admin");
     }
 
     if (action === "unlock") {
+      if (!canManageRoom(currentUser, room)) {
+        sendJson(res, 403, { error: "K této akci nemáte oprávnění." });
+        return;
+      }
       room.locked = false;
       addDiary(room, "Admin", "Místnost byla znovu otevřena pro pozvánky.", "admin");
     }
 
     if (action === "reset-invite") {
+      if (!canManageRoom(currentUser, room)) {
+        sendJson(res, 403, { error: "K této akci nemáte oprávnění." });
+        return;
+      }
       room.inviteToken = randomToken();
       addDiary(room, "Admin", "Pozvánka do místnosti byla resetována.", "admin");
     }
 
     await savePersistentStore();
-    const viewer = body.author || body.name || body.participant || "";
-    sendJson(res, 200, { room: publicRoomFor(room, viewer), store: publicStoreFor(viewer) });
+    const viewer = currentUser.name;
+    sendJson(res, 200, { room: publicRoomFor(room, viewer), store: publicStoreFor(viewer, currentUser), authUser: publicUser(currentUser) });
     return;
   }
 
   sendJson(res, 404, { error: "Not found" });
+}
+
+async function handleAuthApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/auth/me") {
+    const user = getCurrentUser(req);
+    sendJson(res, 200, {
+      user: user ? publicUser(user) : null,
+      googleConfigured: Boolean(googleClientId && googleClientSecret),
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/register") {
+    const body = await readJson(req);
+    const name = cleanName(body.name);
+    const email = cleanEmail(body.email);
+    const password = String(body.password || "");
+    if (!name || !email || password.length < 8) {
+      sendJson(res, 400, { error: "Vyplňte jméno, e-mail a heslo alespoň 8 znaků." });
+      return;
+    }
+    if (store.users.some((user) => user.email === email)) {
+      sendJson(res, 409, { error: "Účet s tímto e-mailem už existuje." });
+      return;
+    }
+    const user = {
+      id: `user-${Date.now().toString(36)}-${randomToken()}`,
+      name,
+      email,
+      provider: "password",
+      passwordHash: await hashPassword(password),
+      admin: shouldBeAdmin(email),
+      createdAt: new Date().toISOString(),
+    };
+    store.users.push(user);
+    const token = createSession(user);
+    await savePersistentStore();
+    setSessionCookie(res, token);
+    sendJson(res, 200, { user: publicUser(user), store: publicStoreFor(user.name, user) });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/login") {
+    const body = await readJson(req);
+    const email = cleanEmail(body.email);
+    const password = String(body.password || "");
+    const user = store.users.find((item) => item.email === email);
+    if (!user || !user.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
+      sendJson(res, 401, { error: "E-mail nebo heslo nesedí." });
+      return;
+    }
+    const token = createSession(user);
+    await savePersistentStore();
+    setSessionCookie(res, token);
+    sendJson(res, 200, { user: publicUser(user), store: publicStoreFor(user.name, user) });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+    const token = cookieValue(req, "dohoda_session");
+    if (token) delete store.sessions[token];
+    await savePersistentStore();
+    clearSessionCookie(res);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  sendJson(res, 404, { error: "Auth endpoint not found" });
+}
+
+async function startGoogleAuth(req, res) {
+  if (!googleClientId || !googleClientSecret) {
+    res.writeHead(302, { Location: "/?auth=google-missing" });
+    res.end();
+    return;
+  }
+  const stateToken = randomToken();
+  store.oauthStates[stateToken] = {
+    createdAt: Date.now(),
+  };
+  await savePersistentStore();
+  const params = new URLSearchParams({
+    client_id: googleClientId,
+    redirect_uri: `${baseUrl(req)}/auth/google/callback`,
+    response_type: "code",
+    scope: "openid email profile",
+    state: stateToken,
+    prompt: "select_account",
+  });
+  res.writeHead(302, { Location: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+  res.end();
+}
+
+async function finishGoogleAuth(req, res, url) {
+  const stateToken = url.searchParams.get("state") || "";
+  const code = url.searchParams.get("code") || "";
+  const savedState = store.oauthStates[stateToken];
+  delete store.oauthStates[stateToken];
+  if (!savedState || Date.now() - savedState.createdAt > 10 * 60 * 1000 || !code) {
+    await savePersistentStore();
+    res.writeHead(302, { Location: "/?auth=google-failed" });
+    res.end();
+    return;
+  }
+  try {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        redirect_uri: `${baseUrl(req)}/auth/google/callback`,
+        grant_type: "authorization_code",
+      }),
+    });
+    if (!tokenResponse.ok) throw new Error("Google token exchange failed");
+    const tokenData = await tokenResponse.json();
+    const profileResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    if (!profileResponse.ok) throw new Error("Google profile request failed");
+    const profile = await profileResponse.json();
+    const email = cleanEmail(profile.email);
+    if (!email) throw new Error("Google účet neposlal e-mail");
+    let user = store.users.find((item) => item.email === email);
+    if (!user) {
+      user = {
+        id: `user-${Date.now().toString(36)}-${randomToken()}`,
+        name: cleanName(profile.name) || email.split("@")[0],
+        email,
+        provider: "google",
+        googleSub: profile.sub,
+        admin: shouldBeAdmin(email),
+        createdAt: new Date().toISOString(),
+      };
+      store.users.push(user);
+    } else {
+      user.googleSub = user.googleSub || profile.sub;
+      user.provider = user.provider === "password" ? "password+google" : "google";
+    }
+    const token = createSession(user);
+    await savePersistentStore();
+    setSessionCookie(res, token);
+    res.writeHead(302, { Location: "/" });
+    res.end();
+  } catch (error) {
+    console.warn("Google auth failed:", error.message);
+    await savePersistentStore();
+    res.writeHead(302, { Location: "/?auth=google-failed" });
+    res.end();
+  }
 }
 
 function serveStatic(res, pathname) {
@@ -460,7 +680,7 @@ async function ensureDatabase() {
           VALUES ($1, $2::jsonb)
           ON CONFLICT (id) DO NOTHING
         `,
-        ["main", JSON.stringify({ rooms: store.rooms })],
+        ["main", JSON.stringify({ rooms: store.rooms, users: store.users, sessions: store.sessions, oauthStates: store.oauthStates })],
       );
     })();
   }
@@ -476,7 +696,11 @@ async function loadPersistentStore() {
   const data = rows[0]?.data;
   if (data && Array.isArray(data.rooms)) {
     store.rooms = data.rooms;
+    store.users = Array.isArray(data.users) ? data.users : [];
+    store.sessions = data.sessions && typeof data.sessions === "object" ? data.sessions : {};
+    store.oauthStates = data.oauthStates && typeof data.oauthStates === "object" ? data.oauthStates : {};
   }
+  normalizeStore();
 }
 
 async function savePersistentStore() {
@@ -489,7 +713,7 @@ async function savePersistentStore() {
       ON CONFLICT (id)
       DO UPDATE SET data = EXCLUDED.data, updated_at = now()
     `,
-    ["main", JSON.stringify({ rooms: store.rooms })],
+    ["main", JSON.stringify({ rooms: store.rooms, users: store.users, sessions: store.sessions, oauthStates: store.oauthStates })],
   );
 }
 
@@ -531,7 +755,20 @@ function findRoom(id) {
 }
 
 function normalizeStore() {
+  if (!Array.isArray(store.users)) store.users = [];
+  if (!store.sessions || typeof store.sessions !== "object") store.sessions = {};
+  if (!store.oauthStates || typeof store.oauthStates !== "object") store.oauthStates = {};
   store.rooms.forEach(ensureRoomDefaults);
+  for (const [token, session] of Object.entries(store.sessions)) {
+    if (!session?.userId || !session?.expiresAt || new Date(session.expiresAt).getTime() < Date.now()) {
+      delete store.sessions[token];
+    }
+  }
+  for (const [token, oauthState] of Object.entries(store.oauthStates)) {
+    if (!oauthState?.createdAt || Date.now() - oauthState.createdAt > 10 * 60 * 1000) {
+      delete store.oauthStates[token];
+    }
+  }
 }
 
 function ensureRoomDefaults(room) {
@@ -555,10 +792,13 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.map.needs)) room.map.needs = [];
 }
 
-function publicStoreFor(viewer = "") {
+function publicStoreFor(viewer = "", user = null) {
   normalizeStore();
+  const visibleRooms = user?.admin
+    ? store.rooms
+    : store.rooms.filter((room) => canViewRoom(user, room, viewer));
   return {
-    rooms: store.rooms.map((room) => publicRoomFor(room, viewer)),
+    rooms: visibleRooms.map((room) => publicRoomFor(room, viewer)),
   };
 }
 
@@ -574,6 +814,35 @@ function publicRoomFor(room, viewer = "") {
   }
   safeRoom.privateConversations = privateConversations;
   return safeRoom;
+}
+
+function publicUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    admin: Boolean(user.admin),
+    provider: user.provider || "password",
+  };
+}
+
+function canViewRoom(user, room, viewer = "") {
+  if (!user) return false;
+  if (user.admin) return true;
+  if (room.ownerId && room.ownerId === user.id) return true;
+  const name = String(viewer || user.name || "").trim();
+  return Boolean(name && room.participants?.includes(name));
+}
+
+function canManageRoom(user, room) {
+  if (!user) return false;
+  if (user.admin) return true;
+  return Boolean(room.ownerId && room.ownerId === user.id);
+}
+
+function shouldBeAdmin(email) {
+  return store.users.length === 0 || adminEmails.includes(cleanEmail(email));
 }
 
 function sanitizeMediationSettings(settings) {
@@ -612,6 +881,87 @@ function addDiary(room, author, text, type = "note") {
 
 function randomToken() {
   return crypto.randomBytes(9).toString("base64url");
+}
+
+function cleanEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function cleanName(name) {
+  return String(name || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const key = await scrypt(password, salt);
+  return `scrypt:${salt}:${key}`;
+}
+
+async function verifyPassword(password, storedHash) {
+  const parts = String(storedHash || "").split(":");
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
+  const key = await scrypt(password, parts[1]);
+  const saved = Buffer.from(parts[2], "base64url");
+  const candidate = Buffer.from(key, "base64url");
+  return saved.length === candidate.length && crypto.timingSafeEqual(saved, candidate);
+}
+
+function scrypt(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(String(password), salt, 32, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey.toString("base64url"));
+    });
+  });
+}
+
+function createSession(user) {
+  const token = randomToken() + randomToken();
+  store.sessions[token] = {
+    userId: user.id,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+  return token;
+}
+
+function getCurrentUser(req) {
+  normalizeStore();
+  const token = cookieValue(req, "dohoda_session");
+  const session = token ? store.sessions[token] : null;
+  if (!session) return null;
+  if (new Date(session.expiresAt).getTime() < Date.now()) {
+    delete store.sessions[token];
+    return null;
+  }
+  return store.users.find((user) => user.id === session.userId) || null;
+}
+
+function cookieValue(req, name) {
+  const cookies = String(req.headers.cookie || "").split(";").map((item) => item.trim());
+  const prefix = `${name}=`;
+  const match = cookies.find((item) => item.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : "";
+}
+
+function setSessionCookie(res, token) {
+  const secure = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL) ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `dohoda_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}${secure}`,
+  );
+}
+
+function clearSessionCookie(res) {
+  const secure = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL) ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `dohoda_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
+}
+
+function baseUrl(req) {
+  if (publicUrl) return publicUrl.startsWith("http") ? publicUrl : `https://${publicUrl}`;
+  const proto = req.headers["x-forwarded-proto"] || "http";
+  const hostName = req.headers["x-forwarded-host"] || req.headers.host;
+  return `${proto}://${hostName}`;
 }
 
 function ensurePrivateConversation(room, author) {

@@ -11,6 +11,10 @@ const state = {
   adminRoomId: "",
   activeTool: "map",
   sessionName: localStorage.getItem("dohoda.participantName") || "",
+  authUser: null,
+  authMode: "login",
+  authError: "",
+  googleConfigured: false,
   theme: localStorage.getItem("dohoda.theme") || "light",
   online: false,
   aiConfigured: false,
@@ -125,14 +129,29 @@ function route(view, roomId) {
 
 function render() {
   applyTheme();
+  if (!state.authUser) {
+    renderAuth();
+    return;
+  }
   if (state.view === "home") renderHome();
   if (state.view === "profile") renderProfile();
   if (state.view === "room") renderRoom();
-  if (state.view === "admin") renderAdmin();
+  if (state.view === "admin") {
+    if (state.authUser?.admin) renderAdmin();
+    else route("profile");
+  }
 }
 
-function renderHome() {
+function renderAuth() {
   app.className = "app minimal";
+  const isRegister = state.authMode === "register";
+  const authHint = new URLSearchParams(location.search).get("auth");
+  const googleMessage =
+    authHint === "google-missing"
+      ? `<p class="auth-error">Google přihlášení zatím není nastavené ve Vercelu.</p>`
+      : authHint === "google-failed"
+        ? `<p class="auth-error">Google přihlášení se nepovedlo. Zkuste to prosím znovu.</p>`
+        : "";
   app.innerHTML = `
     <section class="entry" aria-label="Vstup do aplikace">
       <div class="entry-title">
@@ -141,22 +160,52 @@ function renderHome() {
         <p class="subtitle">Nezaujatý AI mediátor, který rychle hledá společné body, propojuje strany a vede konflikt ke konkrétnímu dalšímu kroku.</p>
         <button class="theme-toggle entry-theme" type="button" onclick="toggleTheme()">${themeLabel()}</button>
       </div>
-      <form id="profileForm" class="entry-form">
+      <form id="authForm" class="entry-form auth-form">
+        <div class="auth-switch" role="tablist" aria-label="Přihlášení nebo registrace">
+          <button class="${!isRegister ? "active" : ""}" type="button" data-auth-mode="login">Přihlášení</button>
+          <button class="${isRegister ? "active" : ""}" type="button" data-auth-mode="register">Registrace</button>
+        </div>
+        ${googleMessage}
+        ${state.authError ? `<p class="auth-error">${escapeHtml(state.authError)}</p>` : ""}
+        ${isRegister ? `
+          <label>
+            Jméno
+            <input id="authName" type="text" autocomplete="name" placeholder="Vaše jméno" />
+          </label>
+        ` : ""}
         <label>
-          Váš profil
-          <input id="profileName" type="text" value="${escapeHtml(state.sessionName || activeProfile().name)}" />
+          E-mail
+          <input id="authEmail" type="email" autocomplete="email" placeholder="vy@example.com" required />
         </label>
-        <button class="primary-btn" type="submit">Pokračovat</button>
+        <label>
+          Heslo
+          <input id="authPassword" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" placeholder="Alespoň 8 znaků" required />
+        </label>
+        <button class="primary-btn" type="submit">${isRegister ? "Vytvořit účet" : "Přihlásit"}</button>
+        <a class="google-btn ${state.googleConfigured ? "" : "disabled"}" href="/auth/google" aria-disabled="${state.googleConfigured ? "false" : "true"}">
+          Přihlásit přes Google
+        </a>
+        ${state.googleConfigured ? "" : `<p class="meta">Google přihlášení je připravené, ale čeká na OAuth údaje ve Vercelu.</p>`}
       </form>
     </section>
   `;
 
-  document.getElementById("profileForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const name = document.getElementById("profileName").value.trim();
-    if (name) setSessionName(name);
-    route("profile");
+  document.querySelectorAll("[data-auth-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.authMode = button.dataset.authMode;
+      state.authError = "";
+      renderAuth();
+    });
   });
+
+  document.getElementById("authForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await submitAuth();
+  });
+}
+
+function renderHome() {
+  route("profile");
 }
 
 function renderProfile() {
@@ -1061,7 +1110,6 @@ async function createRoom() {
     title,
     type: document.getElementById("newRoomType").value,
     goal: document.getElementById("newRoomGoal").value,
-    author: state.sessionName || activeProfile().name,
   };
   const result = await apiAction("/api/rooms", payload);
   ensurePrivateNotes(result.room.id);
@@ -1069,6 +1117,7 @@ async function createRoom() {
 }
 
 function topbar() {
+  const user = state.authUser;
   return `
     <nav class="topbar">
       <button class="brand ghost-btn" type="button" onclick="route('profile')">
@@ -1076,10 +1125,11 @@ function topbar() {
         <strong>Dohoda</strong>
       </button>
       <div class="topbar-actions">
+        <span class="user-pill">${escapeHtml(user?.name || "")}${user?.admin ? " · admin" : ""}</span>
         <button class="theme-toggle" type="button" onclick="toggleTheme()">${themeLabel()}</button>
-        <button class="ghost-btn" type="button" onclick="route('home')">Úvod</button>
         <button class="secondary-btn" type="button" onclick="route('profile')">Profil</button>
-        <button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>
+        ${user?.admin ? `<button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>` : ""}
+        <button class="ghost-btn" type="button" onclick="logout()">Odhlásit</button>
       </div>
     </nav>
   `;
@@ -1112,7 +1162,8 @@ function themeLabel() {
 
 function activeProfile() {
   const profile = state.profiles.find((item) => item.id === state.activeProfileId);
-  if (state.sessionName) profile.name = state.sessionName;
+  if (state.authUser?.name) profile.name = state.authUser.name;
+  else if (state.sessionName) profile.name = state.sessionName;
   return profile;
 }
 
@@ -1350,11 +1401,72 @@ function setSessionName(name) {
   localStorage.setItem("dohoda.participantName", name);
 }
 
+async function submitAuth() {
+  const endpoint = state.authMode === "register" ? "/api/auth/register" : "/api/auth/login";
+  const payload = {
+    email: document.getElementById("authEmail").value.trim(),
+    password: document.getElementById("authPassword").value,
+  };
+  if (state.authMode === "register") {
+    payload.name = document.getElementById("authName").value.trim();
+  }
+  state.authError = "";
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Přihlášení se nepovedlo.");
+    state.authUser = data.user;
+    state.sessionName = data.user?.name || "";
+    if (state.sessionName) localStorage.setItem("dohoda.participantName", state.sessionName);
+    if (data.store?.rooms) state.rooms = data.store.rooms;
+    await applyParticipantFromUrl();
+    state.view = location.hash.startsWith("#room-") ? "room" : "profile";
+    render();
+  } catch (error) {
+    state.authError = error.message;
+    renderAuth();
+  }
+}
+
+async function logout() {
+  await fetch("/api/auth/logout", { method: "POST" });
+  state.authUser = null;
+  state.sessionName = "";
+  localStorage.removeItem("dohoda.participantName");
+  state.view = "home";
+  history.pushState(null, "", location.pathname);
+  render();
+}
+
+async function loadAuth() {
+  try {
+    const response = await fetch("/api/auth/me", { cache: "no-store" });
+    if (!response.ok) throw new Error("Auth unavailable");
+    const data = await response.json();
+    state.authUser = data.user || null;
+    state.googleConfigured = Boolean(data.googleConfigured);
+    if (state.authUser?.name) {
+      state.sessionName = state.authUser.name;
+      localStorage.setItem("dohoda.participantName", state.sessionName);
+    }
+  } catch {
+    state.authUser = null;
+  }
+}
+
 async function loadRemoteState() {
   try {
     const params = new URLSearchParams();
-    if (state.sessionName) params.set("participant", state.sessionName);
     const response = await fetch(`/api/state${params.toString() ? `?${params}` : ""}`, { cache: "no-store" });
+    if (response.status === 401) {
+      state.authUser = null;
+      state.online = false;
+      return;
+    }
     if (!response.ok) throw new Error("State unavailable");
     const data = await response.json();
     if (Array.isArray(data.rooms)) {
@@ -1362,6 +1474,11 @@ async function loadRemoteState() {
       state.online = true;
       state.aiConfigured = Boolean(data.aiConfigured);
       state.databaseConfigured = Boolean(data.databaseConfigured);
+      state.googleConfigured = Boolean(data.googleConfigured);
+      if (data.authUser) {
+        state.authUser = data.authUser;
+        state.sessionName = data.authUser.name || "";
+      }
     }
   } catch {
     state.online = false;
@@ -1379,6 +1496,10 @@ async function apiAction(path, payload) {
     body: JSON.stringify(bodyPayload),
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      state.authUser = null;
+      renderAuth();
+    }
     let message = "Odeslání se nepovedlo.";
     try {
       const detail = await response.json();
@@ -1394,8 +1515,11 @@ async function apiAction(path, payload) {
 }
 
 async function start() {
-  await loadRemoteState();
-  await applyParticipantFromUrl();
+  await loadAuth();
+  if (state.authUser) {
+    await loadRemoteState();
+    await applyParticipantFromUrl();
+  }
   render();
   setInterval(async () => {
     if (state.view !== "room") return;
@@ -1410,21 +1534,21 @@ async function start() {
 async function applyParticipantFromUrl() {
   const params = new URLSearchParams(location.search);
   state.inviteToken = params.get("invite") || state.inviteToken;
-  const participant = params.get("participant");
-  if (!participant) return;
+  const participant = params.get("participant") || state.authUser?.name || "";
   const cleanName = participant.trim();
   if (!cleanName) return;
   if (location.hash.startsWith("#room-")) state.activeRoomId = location.hash.replace("#", "");
-  setSessionName(cleanName);
-  const room = activeRoom();
-  if (!room.participants.includes(cleanName)) {
+  if (!state.authUser?.name) setSessionName(cleanName);
+  const room = state.rooms.find((item) => item.id === state.activeRoomId);
+  if (!room || !room.participants.includes(cleanName)) {
     try {
-      await apiAction(`/api/rooms/${room.id}/join`, { name: cleanName, invite: state.inviteToken });
+      await apiAction(`/api/rooms/${state.activeRoomId}/join`, { name: cleanName, invite: state.inviteToken });
+      await loadRemoteState();
     } catch {
-      addToast("Testovací role se nepovedla připojit.");
+      addToast("Pozvánka se nepovedla otevřít.");
     }
   }
-  state.view = "room";
+  if (location.hash.startsWith("#room-")) state.view = "room";
 }
 
 function initials(name) {
