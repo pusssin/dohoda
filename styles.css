@@ -2431,8 +2431,8 @@ select:focus {
   --blue-soft: rgba(82, 119, 165, 0.13);
   --amber: #b98e48;
   --amber-soft: rgba(185, 142, 72, 0.16);
-  --red: #c4535a;
-  --danger-soft: rgba(196, 83, 90, 0.14);
+  --red: #43f3a2;
+  --danger-soft: rgba(67, 243, 162, 0.14);
   --future-accent: #5d83d7;
   --future-accent-2: #69c8bd;
   --future-bg:
@@ -2775,7 +2775,7 @@ body {
 }
 
 .meter-track span {
-  background: linear-gradient(90deg, #c4535a 0%, #5d83d7 52%, #4e977c 100%);
+  background: linear-gradient(90deg, #43f3a2 0%, #5d83d7 52%, #4e977c 100%);
 }
 
 .room-hero {
@@ -2813,8 +2813,8 @@ body {
   --green-soft: rgba(47, 134, 117, 0.13);
   --blue: #426db8;
   --blue-soft: rgba(66, 109, 184, 0.13);
-  --red: #b4505f;
-  --danger-soft: rgba(180, 80, 95, 0.12);
+  --red: #20d990;
+  --danger-soft: rgba(32, 217, 144, 0.13);
   --future-accent: #4f78dd;
   --future-accent-2: #35b9a7;
   --vision-glass: rgba(255, 255, 255, 0.68);
@@ -2845,8 +2845,8 @@ body {
   --green-soft: rgba(135, 228, 209, 0.14);
   --blue: #a9c4ff;
   --blue-soft: rgba(169, 196, 255, 0.14);
-  --red: #ff9aa8;
-  --danger-soft: rgba(255, 154, 168, 0.14);
+  --red: #89ffcf;
+  --danger-soft: rgba(137, 255, 207, 0.14);
   --future-accent: #a9c4ff;
   --future-accent-2: #85f0df;
   --vision-glass: rgba(18, 25, 35, 0.68);
@@ -3049,14 +3049,14 @@ body {
 }
 
 .composer-box textarea {
-  padding-right: 78px;
-  padding-bottom: 44px;
+  padding-right: 92px;
+  padding-bottom: 58px;
 }
 
 .composer-tools {
   position: absolute;
-  top: 9px;
-  right: 9px;
+  top: 12px;
+  right: 12px;
   display: flex;
   gap: 6px;
   align-items: center;
@@ -3065,8 +3065,9 @@ body {
 .composer-tools-left {
   position: absolute;
   left: 10px;
-  bottom: 10px;
+  bottom: 18px;
   display: flex;
+  gap: 8px;
   align-items: center;
 }
 
@@ -3074,20 +3075,61 @@ body {
 .send-arrow {
   display: grid;
   place-items: center;
-  width: 27px;
-  min-width: 27px;
-  height: 27px;
-  min-height: 27px;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
   border-radius: 999px;
   padding: 0;
   border: 1px solid var(--line);
-  font-size: 0.86rem;
+  font-size: 1.05rem;
   line-height: 1;
 }
 
 .icon-btn {
   background: color-mix(in srgb, var(--vision-glass-strong) 78%, transparent);
   color: var(--muted);
+}
+
+.settings-heading strong,
+.accent-label > span {
+  color: var(--future-accent);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--future-accent) 18%, transparent);
+}
+
+.initiator-chat-btn {
+  min-height: 38px;
+  border: 1px solid color-mix(in srgb, var(--future-accent-2) 42%, var(--line));
+  border-radius: 999px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--vision-glass-strong) 84%, transparent);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.initiator-chat-btn.active {
+  border-color: color-mix(in srgb, var(--future-accent) 78%, var(--future-accent-2));
+  background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
+  color: #06120f;
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--future-accent) 13%, transparent),
+    0 0 24px color-mix(in srgb, var(--future-accent-2) 28%, transparent);
+}
+
+.compact-toggle {
+  max-width: 54%;
+  min-height: 25px;
+  padding: 6px 8px;
+  gap: 6px;
+  font-size: 0.68rem;
+}
+
+.compact-toggle input[type="checkbox"] {
+  width: 12px;
+  min-width: 12px;
+  height: 12px;
+  min-height: 12px;
 }
 
 .send-arrow {
@@ -3605,7 +3647,7 @@ form.private-main-composer .send-arrow,
 
 @media (max-width: 760px) {
   .composer-box textarea {
-    padding-right: 118px;
+    padding-right: 96px;
   }
 
   .composer-tools {
@@ -3646,11 +3688,11 @@ form.private-main-composer .send-arrow,
 
 .auth-error {
   margin: 0;
-  border: 1px solid color-mix(in srgb, #d65f6c 32%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--red) 32%, var(--line));
   border-radius: 13px;
   padding: 10px 12px;
-  color: color-mix(in srgb, #d65f6c 88%, var(--ink));
-  background: color-mix(in srgb, #d65f6c 9%, transparent);
+  color: color-mix(in srgb, var(--red) 88%, var(--ink));
+  background: color-mix(in srgb, var(--red) 9%, transparent);
   font-size: 0.88rem;
   font-weight: 800;
 }
@@ -3745,10 +3787,10 @@ form.private-main-composer .send-arrow,
 form.private-main-composer .icon-btn,
 form.private-main-composer .send-arrow,
 .private-main-composer .primary-btn.send-arrow {
-  width: 23px;
-  min-width: 23px;
-  height: 23px;
-  min-height: 23px;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
 }
 
 .toggle-line input[type="checkbox"] {
@@ -3787,14 +3829,14 @@ form.private-main-composer .send-arrow,
 
 .add-source-btn {
   color: var(--future-accent);
-  font-size: 0.9rem;
+  font-size: 1.35rem;
   font-weight: 950;
 }
 
 .danger-btn {
-  border-color: color-mix(in srgb, #d65f6c 32%, var(--line));
-  color: color-mix(in srgb, #d65f6c 84%, var(--ink));
-  background: color-mix(in srgb, #d65f6c 8%, var(--vision-glass-strong));
+  border-color: color-mix(in srgb, var(--red) 34%, var(--line));
+  color: color-mix(in srgb, var(--red) 84%, var(--ink));
+  background: color-mix(in srgb, var(--red) 10%, var(--vision-glass-strong));
 }
 
 .modal-backdrop {
@@ -3849,18 +3891,17 @@ form.private-main-composer .send-arrow,
   background: color-mix(in srgb, var(--vision-glass-soft) 72%, transparent);
 }
 
-.room-shell .primary-btn:not(.send-arrow),
-.room-shell .secondary-btn,
-.workspace-page .primary-btn,
-.workspace-page .secondary-btn,
-.topbar-actions .secondary-btn {
-  min-height: 22px;
-  padding: 0 7px;
+.compact-toggle {
+  max-width: 54%;
+  min-height: 25px;
+  padding: 6px 8px;
+  gap: 6px;
   font-size: 0.68rem;
-  letter-spacing: 0;
 }
 
-.room-shell .invite-primary {
-  min-height: 25px;
-  padding: 0 9px;
+.compact-toggle input[type="checkbox"] {
+  width: 12px;
+  min-width: 12px;
+  height: 12px;
+  min-height: 12px;
 }

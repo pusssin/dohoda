@@ -474,6 +474,7 @@ function renderRoom() {
                 </div>
                 <div class="composer-tools-left" aria-label="Přidat podklad">
                   <button id="openSourceDialog" class="icon-btn add-source-btn" type="button" title="Přidat zdroj" aria-label="Přidat zdroj">+</button>
+                  <button id="toggleInitiator" class="initiator-chat-btn ${mediationSettings(room).initiatorMode ? "active" : ""}" type="button" title="Iniciátor zapojuje účastníky">Iniciátor</button>
                 </div>
               </div>
             </form>
@@ -500,7 +501,7 @@ function renderRoom() {
             ${mediationSettingsPanel(room)}
             <div class="invite-box quiet-invite">
               <strong>Pozvánka</strong>
-              <code id="inviteUrl">${escapeHtml(inviteUrl)}</code>
+              <button id="copyInviteSide" class="secondary-btn invite-copy-btn" type="button">Pozvěte dalšího účastníka</button>
               <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
             </div>
           </aside>
@@ -698,12 +699,12 @@ function mediationSettingsPanel(room) {
   const adaptHelp = "Mediátor zohlední, komu zpráva míří: jinak mluví s někým zraněným, jinak s někým rozčileným nebo věcným.";
   return `
     <form id="mediationSettingsForm" class="mediation-settings">
-      <div>
+      <div class="settings-heading">
         <strong>Styl mediace</strong>
         <p class="meta">Volby mění chování mediátora hned v této místnosti.</p>
       </div>
-      <label>
-        Jazykový přístup
+      <label class="accent-label">
+        <span>Jazykový přístup</span>
         <select id="mediationStyle">
           <option value="warm" ${settings.style === "warm" ? "selected" : ""}>Vřelý a optimistický</option>
           <option value="calm" ${settings.style === "calm" ? "selected" : ""}>Klidný a citlivý</option>
@@ -721,16 +722,7 @@ function mediationSettingsPanel(room) {
           <option value="3" ${settings.variants === 3 ? "selected" : ""}>3 varianty</option>
         </select>
       </label>
-      <details id="experimentalModes" class="experimental-modes" ${state.experimentalOpen || settings.initiatorMode ? "open" : ""}>
-        <summary>Aktivace účastníků</summary>
-        <label class="toggle-line" title="Aktivně vymýšlí malé kroky, jak zapojit ostatní a dostat je do interakce.">
-          <input id="initiatorMode" type="checkbox" ${settings.initiatorMode ? "checked" : ""} />
-          <span>Iniciátor</span>
-          <span class="hint-dot" aria-label="Aktivuje ostatní k účasti a dohodě.">?</span>
-        </label>
-        <p class="meta">Mediátor začne sám navrhovat krátké otázky, mikrokroky a způsoby, jak dostat účastníky do bezpečné interakce.</p>
-      </details>
-      <label class="toggle-line" title="${escapeHtml(autoBridgeHelp)}">
+      <label class="toggle-line compact-toggle" title="${escapeHtml(autoBridgeHelp)}">
         <input id="autoBridge" type="checkbox" ${settings.autoBridge ? "checked" : ""} />
         <span>Automaticky přerámovat zprávu pro ostatní</span>
         <span class="hint-dot" aria-label="${escapeHtml(autoBridgeHelp)}">?</span>
@@ -1125,22 +1117,23 @@ function bindRoomEvents(room, inviteUrl) {
     const copied = await copyText(inviteUrl, "Pozvánka zkopírována");
     flashButton(event.currentTarget, copied ? "Zkopírováno" : "Označeno");
   });
+  const copyInviteSide = document.getElementById("copyInviteSide");
+  if (copyInviteSide) {
+    copyInviteSide.addEventListener("click", async (event) => {
+      const copied = await copyText(inviteUrl, "Pozvánka zkopírována");
+      flashButton(event.currentTarget, copied ? "Zkopírováno" : "Označeno");
+    });
+  }
 
   const settingsForm = document.getElementById("mediationSettingsForm");
   if (settingsForm) {
-    const experimentalModes = document.getElementById("experimentalModes");
-    if (experimentalModes) {
-      experimentalModes.addEventListener("toggle", () => {
-        state.experimentalOpen = experimentalModes.open;
-      });
-    }
     settingsForm.addEventListener("change", async (event) => {
       const payload = {
         style: document.getElementById("mediationStyle").value,
         variants: Number(document.getElementById("mediationVariants").value),
         autoBridge: document.getElementById("autoBridge").checked,
         adaptToRecipient: document.getElementById("adaptToRecipient").checked,
-        initiatorMode: document.getElementById("initiatorMode").checked,
+        initiatorMode: room.mediationSettings?.initiatorMode === true,
         author: state.sessionName || activeProfile().name,
       };
       room.mediationSettings = payload;
@@ -1150,6 +1143,28 @@ function bindRoomEvents(room, inviteUrl) {
         renderRoom();
       } catch (error) {
         addToast(error.message || "Nastavení se nepovedlo uložit.");
+      }
+    });
+  }
+
+  const initiatorButton = document.getElementById("toggleInitiator");
+  if (initiatorButton) {
+    initiatorButton.addEventListener("click", async () => {
+      const current = mediationSettings(room);
+      const payload = {
+        ...current,
+        initiatorMode: !current.initiatorMode,
+        author: state.sessionName || activeProfile().name,
+      };
+      room.mediationSettings = payload;
+      setFormWaiting(initiatorButton, true, "...");
+      try {
+        await apiAction(`/api/rooms/${room.id}/settings`, payload);
+        addToast(payload.initiatorMode ? "Iniciátor zapnutý" : "Iniciátor vypnutý");
+        renderRoom();
+      } catch (error) {
+        addToast(error.message || "Iniciátora se nepovedlo změnit.");
+        setFormWaiting(initiatorButton, false);
       }
     });
   }

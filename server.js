@@ -343,7 +343,16 @@ async function handleApi(req, res, url) {
       }
       if (joinName) {
         room.participants = unique([...room.participants, joinName]);
-        ensurePrivateConversation(room, joinName);
+        const conversation = ensurePrivateConversation(room, joinName);
+        if (!alreadyParticipant) {
+          conversation.push({
+            author: "AI mediátor",
+            text: newcomerBriefing(room, joinName),
+            ai: true,
+            activity: true,
+            decision: "Uvítací přehled pro nového účastníka",
+          });
+        }
       }
       addAi(room, `${joinName || "Nový účastník"} se připojil do místnosti.`);
       addDiary(room, "AI mediátor", `${joinName || "Nový účastník"} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
@@ -1817,6 +1826,21 @@ function initiatorParticipantPrompt(room, author, participant) {
     `${author} zapnul/a Iniciátora, takže zkusím mediaci trochu rozhýbat.`,
     `Pro vás, ${participant}: napište jen jednu větu. Co z pohledu druhé strany umíte uznat, i když s ní nesouhlasíte celou?`,
     "Stačí krátce. Cíl není ustoupit, ale najít první společný bod.",
+  ].join("\n");
+}
+
+function newcomerBriefing(room, participant) {
+  const stage = room.stage || room.status || "vstupní mapování";
+  const shared = room.map?.shared?.slice(0, 3).join("; ") || "zatím se hledají první společné body";
+  const open = room.map?.open?.slice(0, 3).join("; ") || "zatím nejsou uzavřené hlavní otevřené body";
+  const needs = room.map?.needs?.slice(0, 3).join("; ") || "potřeby stran se teprve mapují";
+  return [
+    `Vítejte, ${participant}. Tady je rychlý přehled bez soukromých zpráv ostatních.`,
+    `Fáze: ${stage}. Posun místnosti: ${room.progress || 0} %.`,
+    `Co zatím víme: ${shared}.`,
+    `Otevřené body: ${open}.`,
+    `Potřeby v mapě: ${needs}.`,
+    "Můžete začít jednou větou: co je pro vás v téhle dohodě nejdůležitější, aby měla smysl?",
   ].join("\n");
 }
 
