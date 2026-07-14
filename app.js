@@ -126,7 +126,7 @@ function renderHome() {
       <div class="entry-title">
         ${logoMark()}
         <h1>Dohoda</h1>
-        <p class="subtitle">Nezaujatý AI mediátor, který rychle hledá průsečíky, propojuje strany a vede konflikt ke konkrétnímu dalšímu kroku.</p>
+        <p class="subtitle">Nezaujatý AI mediátor, který rychle hledá společné body, propojuje strany a vede konflikt ke konkrétnímu dalšímu kroku.</p>
         <button class="theme-toggle entry-theme" type="button" onclick="toggleTheme()">${themeLabel()}</button>
       </div>
       <form id="profileForm" class="entry-form">
@@ -396,7 +396,7 @@ function renderRoom() {
               <div>
                 <p class="room-kicker">Hlavní prostor</p>
                 <h2>${escapeHtml(state.sessionName)} + AI mediátor</h2>
-                <p class="meta">Napište napřímo, co je potřeba. Mediátor z toho vytáhne podstatu, najde průsečík a ostatním předá bezpečné jádro.</p>
+                <p class="meta">Napište napřímo, co je potřeba. Mediátor z toho vytáhne podstatu, propojí ji s ostatními a předá bezpečné jádro.</p>
               </div>
               <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
             </div>
@@ -404,8 +404,13 @@ function renderRoom() {
             ${privateBridgePanel(room)}
             <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message) => messageView({ ...message, me: !message.ai })).join("")}</div>
             <form id="privateMediatorForm" class="composer private-main-composer">
-              <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Mediátor propojí podstatu s další stranou."></textarea>
-              <button class="primary-btn" type="submit">Poslat</button>
+              <div class="composer-box">
+                <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Enter odešle, Shift+Enter vloží nový řádek."></textarea>
+                <div class="composer-tools" aria-label="Ovládání zprávy">
+                  <button id="clearDraft" class="icon-btn" type="button" title="Smazat rozepsaný text">×</button>
+                  <button class="primary-btn send-arrow" type="submit" title="Poslat zprávu" aria-label="Poslat zprávu">→</button>
+                </div>
+              </div>
             </form>
             <details class="side-tools chat-tools" ${state.advancedOpen ? "open" : ""}>
               <summary>Analýza a dohoda</summary>
@@ -456,14 +461,15 @@ function mediationSettingsPanel(room) {
   const settings = mediationSettings(room);
   const autoBridgeHelp = "Když někdo napíše zprávu, ostatním stranám ji mediátor podle potřeby předá v bezpečnější a srozumitelnější podobě.";
   const adaptHelp = "Mediátor zohlední, komu zpráva míří: jinak mluví s někým zraněným, jinak s někým rozčileným nebo věcným.";
+  const experimentalStyle = ["crazy", "initiator"].includes(settings.style) ? settings.style : "";
   return `
     <form id="mediationSettingsForm" class="mediation-settings">
       <div>
         <strong>Styl mediace</strong>
-        <p class="meta">Určuje jazyk, vřelost a způsob překladu mezi stranami.</p>
+        <p class="meta">Běžné volby jsou nahoře. Experimenty jsou schované, aby nerušily mediaci.</p>
       </div>
       <label>
-        Přístup
+        Jazykový přístup
         <select id="mediationStyle">
           <option value="warm" ${settings.style === "warm" ? "selected" : ""}>Vřelý a optimistický</option>
           <option value="calm" ${settings.style === "calm" ? "selected" : ""}>Klidný a citlivý</option>
@@ -473,13 +479,27 @@ function mediationSettingsPanel(room) {
         </select>
       </label>
       <label>
-        Detail formulací, když je potřeba
+        Klikatelné návrhy formulací
         <select id="mediationVariants">
+          <option value="0" ${settings.variants === 0 ? "selected" : ""}>Bez návrhů</option>
           <option value="1" ${settings.variants === 1 ? "selected" : ""}>1 varianta</option>
           <option value="2" ${settings.variants === 2 ? "selected" : ""}>2 varianty</option>
           <option value="3" ${settings.variants === 3 ? "selected" : ""}>3 varianty</option>
         </select>
       </label>
+      <details class="experimental-modes" ${experimentalStyle ? "open" : ""}>
+        <summary>Experimentální režimy</summary>
+        <label class="toggle-line" title="Hravější tón pro uvolnění napětí. Nepoužívá se pro vážné nebo zranitelné situace.">
+          <input name="experimentalStyle" type="radio" value="crazy" ${experimentalStyle === "crazy" ? "checked" : ""} />
+          <span>Crazy</span>
+          <span class="hint-dot" aria-label="Hravější tón pro odlehčení napětí.">?</span>
+        </label>
+        <label class="toggle-line" title="Aktivně vymýšlí malé kroky, jak zapojit ostatní a dostat je do interakce.">
+          <input name="experimentalStyle" type="radio" value="initiator" ${experimentalStyle === "initiator" ? "checked" : ""} />
+          <span>Iniciátor</span>
+          <span class="hint-dot" aria-label="Aktivuje ostatní k účasti a dohodě.">?</span>
+        </label>
+      </details>
       <label class="toggle-line" title="${escapeHtml(autoBridgeHelp)}">
         <input id="autoBridge" type="checkbox" ${settings.autoBridge ? "checked" : ""} />
         <span>Automaticky přerámovat zprávu pro ostatní</span>
@@ -666,6 +686,7 @@ function listTool(title, items) {
 
 function messageView(message) {
   const mine = message.me || message.author === state.sessionName;
+  const parsed = parseDraftSuggestions(message.text);
   const label = message.mediatedFrom
     ? `Mediovaný přenos od ${message.mediatedFrom}`
     : message.activity
@@ -676,9 +697,41 @@ function messageView(message) {
     <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}">
       <strong>${escapeHtml(label)}</strong>
       ${decision}
-      <p>${escapeHtml(message.text)}</p>
+      <p>${escapeHtml(parsed.body || message.text)}</p>
+      ${parsed.drafts.length ? `
+        <div class="draft-suggestions" aria-label="Návrhy formulace">
+          ${parsed.drafts.map((draft, index) => `
+            <button class="draft-card" type="button" data-draft="${escapeHtml(draft)}">
+              <span>Návrh ${index + 1}</span>
+              ${escapeHtml(draft)}
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
     </article>
   `;
+}
+
+function parseDraftSuggestions(text) {
+  const lines = String(text || "").split(/\n+/);
+  const body = [];
+  const drafts = [];
+  let collecting = false;
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    if (/^návrhy?\s+formulace:?$/i.test(trimmed) || /^možné\s+formulace:?$/i.test(trimmed)) {
+      collecting = true;
+      return;
+    }
+    if (collecting) {
+      const match = trimmed.match(/^(?:\d+[\).:-]?\s*|[-–]\s*)(.+)$/);
+      drafts.push((match ? match[1] : trimmed).replace(/^["„]|["“]$/g, "").trim());
+      return;
+    }
+    body.push(trimmed);
+  });
+  return { body: body.join("\n"), drafts: drafts.filter(Boolean) };
 }
 
 function bindRoomEvents(room, inviteUrl) {
@@ -705,9 +758,15 @@ function bindRoomEvents(room, inviteUrl) {
 
   const settingsForm = document.getElementById("mediationSettingsForm");
   if (settingsForm) {
-    settingsForm.addEventListener("change", async () => {
+    settingsForm.addEventListener("change", async (event) => {
+      if (event.target?.id === "mediationStyle") {
+        document.querySelectorAll('input[name="experimentalStyle"]').forEach((input) => {
+          input.checked = false;
+        });
+      }
+      const experimental = document.querySelector('input[name="experimentalStyle"]:checked');
       const payload = {
-        style: document.getElementById("mediationStyle").value,
+        style: experimental?.value || document.getElementById("mediationStyle").value,
         variants: Number(document.getElementById("mediationVariants").value),
         autoBridge: document.getElementById("autoBridge").checked,
         adaptToRecipient: document.getElementById("adaptToRecipient").checked,
@@ -726,7 +785,7 @@ function bindRoomEvents(room, inviteUrl) {
   document.getElementById("privateMediatorForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const textarea = document.getElementById("privateMediatorText");
-    const button = event.currentTarget.querySelector("button");
+    const button = event.currentTarget.querySelector('button[type="submit"]');
     const text = textarea.value.trim();
     if (!text) return;
     const author = state.sessionName || activeProfile().name;
@@ -736,7 +795,7 @@ function bindRoomEvents(room, inviteUrl) {
     conversation.push({ author, text });
     conversation.push({
       author: "AI mediátor",
-      text: "AI mediátor hledá průsečík a připravuje bezpečný přenos pro ostatní...",
+      text: "Přemýšlím...",
       ai: true,
       pending: true,
     });
@@ -757,6 +816,31 @@ function bindRoomEvents(room, inviteUrl) {
       state.requestInProgress = false;
     }
   });
+
+  document.querySelectorAll(".draft-card").forEach((button) => {
+    button.addEventListener("click", () => {
+      const textarea = document.getElementById("privateMediatorText");
+      textarea.value = button.dataset.draft || "";
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      addToast("Návrh vložen do zprávy");
+    });
+  });
+
+  const textarea = document.getElementById("privateMediatorText");
+  const clearDraft = document.getElementById("clearDraft");
+  if (clearDraft && textarea) {
+    clearDraft.addEventListener("click", () => {
+      textarea.value = "";
+      textarea.focus();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        document.getElementById("privateMediatorForm").requestSubmit();
+      }
+    });
+  }
 
   document.getElementById("draftAgreement").addEventListener("click", async () => {
     await apiAction(`/api/rooms/${room.id}/agreement`, {});
@@ -810,12 +894,20 @@ function topbar() {
 function logoMark() {
   return `
     <span class="mark handshake-logo" aria-hidden="true">
-      <svg viewBox="0 0 48 48" role="img">
-        <path class="hand-left" d="M7 25.5l8.2-8.2c2.1-2.1 5.5-2.1 7.6 0l2.2 2.2" />
-        <path class="hand-right" d="M41 25.5l-8.2-8.2c-2.1-2.1-5.5-2.1-7.6 0l-9.4 9.4c-1.2 1.2-.4 3.3 1.3 3.3h2.2c1.5 0 2.9-.6 4-1.7l2.3-2.3" />
-        <path class="shake" d="M22.8 28.6l4.7 4.7c1.5 1.5 3.8 1.5 5.3 0l6.7-6.7" />
-        <path class="cuff-left" d="M5.5 27.5l6 6" />
-        <path class="cuff-right" d="M42.5 27.5l-6 6" />
+      <svg viewBox="0 0 64 64" role="img">
+        <path class="palm left-palm" d="M7 37l10.5-10.5c3-3 7.7-3.2 10.9-.5l3.4 2.9" />
+        <path class="palm right-palm" d="M57 37L46.5 26.5c-3-3-7.7-3.2-10.9-.5L24.8 35.2c-1.7 1.5-.6 4.3 1.7 4.3h3.1c2.2 0 4.3-.8 5.9-2.3l3.1-2.9" />
+        <path class="finger left-f1" d="M16 27l-4.5-7.5" />
+        <path class="finger left-f2" d="M20.5 24.5l-3.2-8.5" />
+        <path class="finger left-f3" d="M25 24.8l-1.5-8.8" />
+        <path class="finger left-f4" d="M29.1 27l.3-7.8" />
+        <path class="finger right-f1" d="M48 27l4.5-7.5" />
+        <path class="finger right-f2" d="M43.5 24.5l3.2-8.5" />
+        <path class="finger right-f3" d="M39 24.8l1.5-8.8" />
+        <path class="finger right-f4" d="M34.9 27l-.3-7.8" />
+        <path class="shake" d="M33.8 39.5l6 5.7c2 1.9 5.1 1.9 7.1-.1l8.7-8.7" />
+        <path class="cuff-left" d="M5 39l8.2 8.2" />
+        <path class="cuff-right" d="M59 39l-8.2 8.2" />
       </svg>
     </span>
   `;
@@ -911,7 +1003,7 @@ function conflictMeter(room) {
 
 function conflictStage(progress) {
   if (progress >= 86) return "zelená: dohoda se rýsuje";
-  if (progress >= 58) return "tyrkysová: rýsuje se průsečík";
+  if (progress >= 58) return "tyrkysová: rýsuje se společný bod";
   if (progress >= 30) return "modrá: konflikt se strukturuje";
   return "červená: začátek konfliktu";
 }
@@ -1050,7 +1142,11 @@ function flashButton(button, label) {
 function setFormWaiting(button, waiting, label = "Poslat") {
   if (!button) return;
   button.disabled = waiting;
-  button.textContent = waiting ? label : "Poslat";
+  if (button.classList.contains("send-arrow")) {
+    button.textContent = waiting ? "…" : "→";
+  } else {
+    button.textContent = waiting ? label : "Poslat";
+  }
   button.classList.toggle("is-loading", waiting);
 }
 
