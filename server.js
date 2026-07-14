@@ -1293,9 +1293,19 @@ function generateProtocol(room) {
   if (!diary.length) lines.push("- Zatím bez událostí.");
   for (const item of diary) {
     const when = item.at ? new Date(item.at).toLocaleString("cs-CZ", { timeZone: "Europe/Prague" }) : "";
-    lines.push(`- ${when ? `${when} · ` : ""}${item.author || "Záznam"}: ${item.text || ""}`);
+    lines.push(`- ${when ? `${when} · ` : ""}${item.author || "Záznam"}: ${protocolDiaryText(item)}`);
   }
   return lines.join("\n");
+}
+
+function protocolDiaryText(item) {
+  if (item?.type === "private-topic") {
+    return "Účastník komunikoval s mediátorem. Do protokolu se ukládá jen procesní záznam, ne původní soukromá zpráva.";
+  }
+  if (item?.type === "mediator-response") {
+    return "Mediátor odpověděl účastníkovi a ostatním stranám předal pouze bezpečné shrnutí podstaty.";
+  }
+  return String(item?.text || "");
 }
 
 function ensureRoomDefaultsShallow(room) {
@@ -1420,8 +1430,7 @@ function mediationActivityTopic(text) {
   if (lower.includes("termín") || lower.includes("termin") || lower.includes("kdy")) {
     return "termíny, závazky a konkrétní další kroky";
   }
-  const preview = clean.length > 120 ? `${clean.slice(0, 117)}...` : clean;
-  return `nový pohled k tématu dohody: „${preview}“`;
+  return "nový soukromý vstup k tématu dohody";
 }
 
 async function openaiMediatorReply(room, text, author) {

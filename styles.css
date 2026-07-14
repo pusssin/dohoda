@@ -3848,3 +3848,19 @@ form.private-main-composer .send-arrow,
   border-radius: 16px;
   background: color-mix(in srgb, var(--vision-glass-soft) 72%, transparent);
 }
+
+.room-shell .primary-btn:not(.send-arrow),
+.room-shell .secondary-btn,
+.workspace-page .primary-btn,
+.workspace-page .secondary-btn,
+.topbar-actions .secondary-btn {
+  min-height: 22px;
+  padding: 0 7px;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+}
+
+.room-shell .invite-primary {
+  min-height: 25px;
+  padding: 0 9px;
+}
