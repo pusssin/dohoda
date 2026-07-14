@@ -3219,6 +3219,86 @@ form.private-main-composer .send-arrow,
   background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
 }
 
+.sources-tool {
+  gap: 12px;
+}
+
+.source-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.source-form label,
+.source-form .secondary-btn {
+  min-width: 0;
+}
+
+.source-text-field,
+.source-url-field,
+.source-file-field {
+  grid-column: 1 / -1;
+}
+
+.source-form textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.source-list {
+  display: grid;
+  gap: 12px;
+}
+
+.source-card {
+  gap: 11px;
+}
+
+.source-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.source-link {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--future-accent);
+  font-size: 0.88rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.source-analysis {
+  border: 1px solid color-mix(in srgb, var(--future-accent) 24%, var(--line));
+  border-radius: 14px;
+  padding: 11px 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 8%, transparent), transparent 68%),
+    color-mix(in srgb, var(--vision-glass-strong) 78%, transparent);
+}
+
+.source-analysis strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+}
+
+.source-analysis p {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .source-form {
+    grid-template-columns: 1fr;
+  }
+
+  .source-head {
+    display: grid;
+  }
+}
+
 .message::before {
   content: "";
   position: absolute;

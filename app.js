@@ -116,6 +116,7 @@ const goals = [
 ];
 
 const roomTypes = ["Pracovní", "Rodinný", "Partnerský", "Obchodní", "Komunitní", "Jiný"];
+const maxSourceBytes = 50 * 1024 * 1024;
 
 function route(view, roomId) {
   state.view = view;
@@ -488,6 +489,7 @@ function renderRoom() {
               <div class="tabs">
                 ${toolTab("map", "Mapa")}
                 ${toolTab("diary", "Deník")}
+                ${toolTab("sources", "Zdroje")}
                 ${toolTab("bridge", "Most")}
                 ${toolTab("forms", "Formuláře")}
                 ${toolTab("agreement", "Dohoda")}
@@ -881,6 +883,47 @@ function toolContent(room) {
     `;
   }
 
+  if (state.activeTool === "sources") {
+    const sources = Array.isArray(room.sources) ? room.sources : [];
+    return `
+      <div class="tool-card sources-tool">
+        <h3>Zdroje místnosti</h3>
+        <p class="meta">Přidejte text, odkaz, audio nebo soubor do 50 MB. AI z nich vytáhne fakta, potřeby a otázky pro dohodu.</p>
+        <form id="sourceForm" class="source-form">
+          <label>
+            Typ zdroje
+            <select id="sourceKind">
+              <option value="text">Text</option>
+              <option value="link">Odkaz</option>
+              <option value="file">Soubor</option>
+              <option value="audio">Audio</option>
+            </select>
+          </label>
+          <label>
+            Název
+            <input id="sourceTitle" type="text" placeholder="Např. hlasová poznámka, e-mail, smlouva..." />
+          </label>
+          <label class="source-text-field">
+            Text
+            <textarea id="sourceText" rows="4" placeholder="Vložte text nebo stručný popis zdroje."></textarea>
+          </label>
+          <label class="source-url-field">
+            Odkaz
+            <input id="sourceUrl" type="url" placeholder="https://..." />
+          </label>
+          <label class="source-file-field">
+            Soubor do 50 MB
+            <input id="sourceFile" type="file" />
+          </label>
+          <button class="secondary-btn" type="submit">Přidat zdroj</button>
+        </form>
+      </div>
+      <div class="source-list">
+        ${sources.length ? sources.map(sourceView).join("") : `<div class="empty">Zdroje zatím nejsou přidané.</div>`}
+      </div>
+    `;
+  }
+
   if (state.activeTool === "forms") {
     return `
       <div class="tool-card">
@@ -906,6 +949,25 @@ function toolContent(room) {
       <h3>Návrh dohody</h3>
       <p class="meta">${escapeHtml(room.agreement || "Návrh zatím není vygenerovaný.")}</p>
     </div>
+  `;
+}
+
+function sourceView(source) {
+  const size = source.size ? `${Math.round(source.size / 1024)} kB` : "";
+  const status = source.status || "Uloženo";
+  return `
+    <article class="tool-card source-card">
+      <div class="source-head">
+        <div>
+          <h3>${escapeHtml(source.title || "Zdroj")}</h3>
+          <p class="meta">${escapeHtml(source.kind || "zdroj")}${source.mime ? ` · ${escapeHtml(source.mime)}` : ""}${size ? ` · ${size}` : ""} · ${escapeHtml(status)}</p>
+        </div>
+        <button class="secondary-btn" type="button" data-analyze-source="${source.id}">Analyzovat AI</button>
+      </div>
+      ${source.url ? `<a class="source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.url)}</a>` : ""}
+      ${source.excerpt ? `<p>${escapeHtml(source.excerpt)}</p>` : `<p class="meta">Soubor je uložený jako podklad. U netextových souborů bude analýza záviset na tom, zda z nich umíme získat text nebo přepis.</p>`}
+      ${source.analysis ? `<div class="source-analysis"><strong>AI analýza</strong><p>${escapeHtml(source.analysis)}</p></div>` : ""}
+    </article>
   `;
 }
 
@@ -1136,6 +1198,118 @@ function bindRoomEvents(room, inviteUrl) {
     });
   }
 
+  bindSourceEvents(room);
+
+}
+
+function bindSourceEvents(room) {
+  const form = document.getElementById("sourceForm");
+  if (!form) return;
+  const kind = document.getElementById("sourceKind");
+  const syncFields = () => {
+    const value = kind.value;
+    document.querySelector(".source-text-field").hidden = value !== "text";
+    document.querySelector(".source-url-field").hidden = value !== "link";
+    document.querySelector(".source-file-field").hidden = !["file", "audio"].includes(value);
+  };
+  kind.addEventListener("change", syncFields);
+  syncFields();
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    setFormWaiting(button, true, "Přidávám...");
+    state.requestInProgress = true;
+    try {
+      const payload = await buildSourcePayload();
+      const result = await apiAction(`/api/rooms/${room.id}/add-source`, payload);
+      state.rooms = result.store.rooms;
+      state.activeTool = "sources";
+      addToast("Zdroj přidán");
+      renderRoom();
+    } catch (error) {
+      addToast(error.message || "Zdroj se nepovedlo přidat.");
+    } finally {
+      state.requestInProgress = false;
+      setFormWaiting(button, false);
+    }
+  });
+
+  document.querySelectorAll("[data-analyze-source]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      setFormWaiting(button, true, "Analyzuji...");
+      state.requestInProgress = true;
+      try {
+        await apiAction(`/api/rooms/${room.id}/analyze-source`, {
+          sourceId: button.dataset.analyzeSource,
+        });
+        state.activeTool = "sources";
+        renderRoom();
+        addToast("Zdroj analyzován");
+      } catch (error) {
+        addToast(error.message || "Analýza se nepovedla.");
+      } finally {
+        state.requestInProgress = false;
+      }
+    });
+  });
+}
+
+async function buildSourcePayload() {
+  const kind = document.getElementById("sourceKind").value;
+  const title = document.getElementById("sourceTitle").value.trim();
+  const payload = {
+    kind,
+    title,
+    author: state.sessionName || activeProfile().name,
+  };
+
+  if (kind === "text") {
+    payload.extractedText = document.getElementById("sourceText").value.trim();
+    if (!payload.extractedText) throw new Error("Vložte text zdroje.");
+    payload.size = new Blob([payload.extractedText]).size;
+    payload.title = payload.title || "Textový zdroj";
+    return payload;
+  }
+
+  if (kind === "link") {
+    payload.url = document.getElementById("sourceUrl").value.trim();
+    if (!payload.url) throw new Error("Vložte odkaz.");
+    payload.extractedText = document.getElementById("sourceText")?.value.trim() || "";
+    payload.title = payload.title || payload.url;
+    return payload;
+  }
+
+  const file = document.getElementById("sourceFile").files[0];
+  if (!file) throw new Error("Vyberte soubor.");
+  if (file.size > maxSourceBytes) throw new Error("Soubor je větší než 50 MB.");
+  const textLike = file.type.startsWith("text/") || /\.(txt|md|csv|json|html|xml|rtf)$/i.test(file.name);
+  payload.kind = kind === "audio" || file.type.startsWith("audio/") ? "audio" : "file";
+  payload.title = payload.title || file.name;
+  payload.fileName = file.name;
+  payload.mime = file.type || "application/octet-stream";
+  payload.size = file.size;
+  payload.dataUrl = await readFileAsDataUrl(file);
+  if (textLike) payload.extractedText = await readFileAsText(file);
+  return payload;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Soubor se nepovedlo přečíst."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => resolve("");
+    reader.readAsText(file);
+  });
 }
 
 async function createRoom() {
@@ -1486,11 +1660,12 @@ function flashButton(button, label) {
 
 function setFormWaiting(button, waiting, label = "Poslat") {
   if (!button) return;
+  if (waiting && !button.dataset.idleLabel) button.dataset.idleLabel = button.textContent;
   button.disabled = waiting;
   if (button.classList.contains("send-arrow")) {
     button.textContent = waiting ? "…" : "→";
   } else {
-    button.textContent = waiting ? label : "Poslat";
+    button.textContent = waiting ? label : button.dataset.idleLabel || "Poslat";
   }
   button.classList.toggle("is-loading", waiting);
 }

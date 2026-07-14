@@ -29,6 +29,8 @@ const defaultMediationSettings = {
   initiatorMode: false,
 };
 
+const maxSourceBytes = 50 * 1024 * 1024;
+
 const styleInstructions = {
   warm:
     "Tón je vřelý, svižný, lidský a lehce optimistický. Mluv krátce, bez poradenské vaty.",
@@ -96,6 +98,7 @@ const store = {
         open: ["Čekáme na pohled pozvaných účastníků.", "Kdo má finální slovo u priorit."],
         needs: ["Anna: jasné hranice role a pravidla komunikace."],
       },
+      sources: [],
       diary: [
         {
           author: "AI mediátor",
@@ -141,6 +144,7 @@ const store = {
         open: ["Čekáme na pohled pozvaných účastníků.", "Rozdělení času.", "Finanční příspěvky."],
         needs: ["Anna: předvídatelnost."],
       },
+      sources: [],
       diary: [
         {
           author: "AI mediátor",
@@ -275,6 +279,7 @@ async function handleApi(req, res, url) {
         open: ["Čekáme na pohled dalších stran."],
         needs: ["Zakladatel chce strukturovaný proces."],
       },
+      sources: [],
       diary: [
         {
           author: "AI mediátor",
@@ -393,6 +398,40 @@ async function handleApi(req, res, url) {
       updateMap(room, "souhlas termín hranice");
       moveProgress(room, 8);
       addDiary(room, "AI mediátor", "Mapa dohody byla aktualizována: shoda, otevřené body a potřeby jsou připravené k další kontrole.", "analysis");
+    }
+
+    if (action === "add-source") {
+      const source = sanitizeSource(body);
+      if (source.size > maxSourceBytes) {
+        sendJson(res, 413, { error: "Soubor je větší než 50 MB." });
+        return;
+      }
+      ensureRoomDefaults(room);
+      room.sources.unshift(source);
+      room.sources = room.sources.slice(0, 40);
+      addDiary(room, currentUser.name, `Přidal/a zdroj: ${source.title}.`, "source");
+      if (source.kind === "audio" && source.dataUrl && openaiApiKey) {
+        try {
+          source.extractedText = await transcribeAudioSource(source);
+          source.status = "Přepsáno";
+        } catch (error) {
+          source.status = "Čeká na přepis";
+          source.note = "Audio je uložené, přepis se zatím nepovedl.";
+          console.warn("Audio transcription failed:", error.message);
+        }
+      }
+    }
+
+    if (action === "analyze-source") {
+      const source = room.sources?.find((item) => item.id === body.sourceId);
+      if (!source) {
+        sendJson(res, 404, { error: "Zdroj nebyl nalezen." });
+        return;
+      }
+      source.analysis = await analyzeSource(room, source);
+      source.status = source.analysis ? "Analyzováno" : source.status || "Uloženo";
+      applySourceAnalysis(room, source);
+      addDiary(room, "AI mediátor", `Zdroj „${source.title}“ byl přečten a promítnut do mapy dohody.`, "source-analysis");
     }
 
     if (action === "archive") {
@@ -628,7 +667,7 @@ function readJson(req) {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1_000_000) req.destroy();
+      if (raw.length > 75 * 1024 * 1024) req.destroy();
     });
     req.on("end", () => {
       try {
@@ -790,6 +829,7 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.map.shared)) room.map.shared = [];
   if (!Array.isArray(room.map.open)) room.map.open = [];
   if (!Array.isArray(room.map.needs)) room.map.needs = [];
+  if (!Array.isArray(room.sources)) room.sources = [];
 }
 
 function publicStoreFor(viewer = "", user = null) {
@@ -813,7 +853,26 @@ function publicRoomFor(room, viewer = "") {
     safeRoom.inviteToken = "";
   }
   safeRoom.privateConversations = privateConversations;
+  safeRoom.sources = room.sources.map(publicSource);
   return safeRoom;
+}
+
+function publicSource(source) {
+  return {
+    id: source.id,
+    kind: source.kind,
+    title: source.title,
+    url: source.url || "",
+    mime: source.mime || "",
+    size: source.size || 0,
+    fileName: source.fileName || "",
+    status: source.status || "Uloženo",
+    note: source.note || "",
+    excerpt: source.extractedText ? source.extractedText.slice(0, 600) : "",
+    analysis: source.analysis || "",
+    addedBy: source.addedBy || "",
+    addedAt: source.addedAt || "",
+  };
 }
 
 function publicUser(user) {
@@ -962,6 +1021,138 @@ function baseUrl(req) {
   const proto = req.headers["x-forwarded-proto"] || "http";
   const hostName = req.headers["x-forwarded-host"] || req.headers.host;
   return `${proto}://${hostName}`;
+}
+
+function sanitizeSource(body) {
+  const kind = ["text", "link", "file", "audio"].includes(body.kind) ? body.kind : "file";
+  const extractedText = String(body.extractedText || "").slice(0, 180_000);
+  return {
+    id: `source-${Date.now().toString(36)}-${randomToken()}`,
+    kind,
+    title: String(body.title || body.fileName || body.url || "Nový zdroj").trim().slice(0, 140),
+    url: String(body.url || "").trim().slice(0, 2000),
+    mime: String(body.mime || "").trim().slice(0, 160),
+    size: Math.max(0, Number(body.size || 0)),
+    fileName: String(body.fileName || "").trim().slice(0, 220),
+    dataUrl: String(body.dataUrl || ""),
+    extractedText,
+    status: extractedText ? "Přečteno" : "Uloženo",
+    note: String(body.note || "").trim().slice(0, 400),
+    addedBy: String(body.author || "").trim().slice(0, 120),
+    addedAt: new Date().toISOString(),
+    analysis: "",
+  };
+}
+
+async function transcribeAudioSource(source) {
+  const match = String(source.dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error("Audio nemá platný obsah.");
+  const mime = match[1] || source.mime || "audio/mpeg";
+  const buffer = Buffer.from(match[2], "base64");
+  if (buffer.length > maxSourceBytes) throw new Error("Audio je větší než 50 MB.");
+  const form = new FormData();
+  const blob = new Blob([buffer], { type: mime });
+  form.append("file", blob, source.fileName || "audio.webm");
+  form.append("model", "gpt-4o-mini-transcribe");
+  form.append("language", "cs");
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${openaiApiKey}` },
+    body: form,
+  });
+  if (!response.ok) throw new Error(`Audio transcription failed: ${response.status}`);
+  const data = await response.json();
+  return String(data.text || "").slice(0, 180_000);
+}
+
+async function analyzeSource(room, source) {
+  if (source.kind === "link" && source.url && !source.extractedText) {
+    source.extractedText = await fetchReadableLinkText(source.url);
+    if (source.extractedText) source.status = "Přečteno";
+  }
+  const sourceText = source.extractedText || source.url || source.note || source.title;
+  if (!sourceText) return "Zdroj byl uložen, ale zatím z něj není čitelný text pro analýzu.";
+  if (!openaiApiKey) return fallbackSourceAnalysis(source);
+  try {
+    const payload = {
+      model: openaiModel,
+      input: [
+        {
+          role: "system",
+          content:
+            "Jsi AI mediátor v aplikaci Dohoda. Analyzuj zdroj stručně, neutrálně a prakticky. Neřeš právní závěry. Vypiš: 1) fakta, 2) potřeby/obavy, 3) body pro dohodu, 4) otázky k ověření. Česky.",
+        },
+        {
+          role: "user",
+          content: [
+            `Téma místnosti: ${room.title}`,
+            `Cíl: ${room.goal || ""}`,
+            `Zdroj: ${source.title}`,
+            `Typ: ${source.kind} ${source.mime || ""}`,
+            "",
+            String(sourceText).slice(0, 40_000),
+          ].join("\n"),
+        },
+      ],
+      max_output_tokens: 520,
+    };
+    const response = await openaiResponsesRequest(payload, 16000);
+    return extractResponseText(response) || fallbackSourceAnalysis(source);
+  } catch (error) {
+    console.warn("OpenAI source analysis fallback:", error.message);
+    return fallbackSourceAnalysis(source);
+  }
+}
+
+async function fetchReadableLinkText(url) {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    const response = await fetch(parsed.toString(), {
+      headers: {
+        "User-Agent": "DohodaMediator/0.1",
+        Accept: "text/html,text/plain,application/json;q=0.8,*/*;q=0.2",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return "";
+    const contentType = response.headers.get("content-type") || "";
+    const raw = (await response.text()).slice(0, 220_000);
+    if (contentType.includes("html")) return htmlToText(raw).slice(0, 180_000);
+    return raw.replace(/\s+/g, " ").trim().slice(0, 180_000);
+  } catch {
+    return "";
+  }
+}
+
+function htmlToText(html) {
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fallbackSourceAnalysis(source) {
+  const preview = (source.extractedText || source.url || source.title || "").replace(/\s+/g, " ").trim().slice(0, 260);
+  return [
+    `Zdroj: ${source.title}`,
+    preview ? `Podstata: ${preview}` : "Podstata: zdroj je uložený, ale není z něj dostupný čitelný text.",
+    "Možný přínos pro mediaci: ověřit fakta, oddělit domněnky od potřeb a doplnit otázky k dohodě.",
+  ].join("\n");
+}
+
+function applySourceAnalysis(room, source) {
+  const text = `${source.title} ${source.analysis || source.extractedText || source.url || ""}`;
+  addUnique(room.map.shared, `Zdroj „${source.title}“ byl přidán jako podklad pro ověření faktů.`);
+  if (/term[ií]n|datum|kdy|lh[uů]ta/i.test(text)) addUnique(room.map.open, "Ze zdrojů ověřit termíny, závazky a časovou osu.");
+  if (/potřeb|obav|hranice|důvěr|duver|odpověd/i.test(text)) addUnique(room.map.needs, "Ze zdrojů doplnit potřeby, obavy a hranice jednotlivých stran.");
+  moveProgress(room, 4);
 }
 
 function ensurePrivateConversation(room, author) {
