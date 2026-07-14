@@ -477,6 +477,17 @@ async function handleApi(req, res, url) {
           console.warn("Audio transcription failed:", error.message);
         }
       }
+      try {
+        source.status = "Analyzuji";
+        source.analysis = await analyzeSource(room, source);
+        source.status = source.analysis ? "Analyzováno" : source.status || "Uloženo";
+        applySourceAnalysis(room, source);
+        addDiary(room, "AI mediátor", `Zdroj „${source.title}“ byl automaticky přečten, shrnut a doplněn o otázky pro mediaci.`, "source-analysis");
+      } catch (error) {
+        source.status = source.extractedText ? "Přečteno" : "Uloženo";
+        source.note = "Zdroj je uložený, automatická analýza se zatím nepovedla.";
+        console.warn("Automatic source analysis failed:", error.message);
+      }
     }
 
     if (action === "analyze-source") {
@@ -1279,9 +1290,12 @@ function htmlToText(html) {
 function fallbackSourceAnalysis(source) {
   const preview = (source.extractedText || source.url || source.title || "").replace(/\s+/g, " ").trim().slice(0, 260);
   return [
-    `Zdroj: ${source.title}`,
-    preview ? `Podstata: ${preview}` : "Podstata: zdroj je uložený, ale není z něj dostupný čitelný text.",
-    "Možný přínos pro mediaci: ověřit fakta, oddělit domněnky od potřeb a doplnit otázky k dohodě.",
+    `Shrnutí: ${preview || "zdroj je uložený, ale není z něj dostupný čitelný text."}`,
+    "Možný význam pro dohodu: ověřit fakta, oddělit domněnky od potřeb a pojmenovat, co může pomoci posunu.",
+    "Otázky k ověření:",
+    "- Která tvrzení ze zdroje jsou pro dohodu opravdu podstatná?",
+    "- Co z toho je fakt, co interpretace a co potřeba některé strany?",
+    "- Jaký jeden další krok by tento zdroj mohl zpřesnit?",
   ].join("\n");
 }
 

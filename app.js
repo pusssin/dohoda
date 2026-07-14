@@ -1014,7 +1014,7 @@ function sourceView(source) {
           <h3>${escapeHtml(source.title || "Zdroj")}</h3>
           <p class="meta">${escapeHtml(source.kind || "zdroj")}${source.mime ? ` · ${escapeHtml(source.mime)}` : ""}${size ? ` · ${size}` : ""} · ${escapeHtml(status)}</p>
         </div>
-        <button class="secondary-btn" type="button" data-analyze-source="${source.id}">Analyzovat AI</button>
+        <button class="secondary-btn" type="button" data-analyze-source="${source.id}">${source.analysis ? "Analyzovat znovu" : "Analyzovat AI"}</button>
         <button class="secondary-btn danger-btn" type="button" data-delete-source="${source.id}">Smazat</button>
       </div>
       ${source.url ? `<a class="source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.url)}</a>` : ""}
@@ -1380,7 +1380,7 @@ function bindOneSourceForm(room, prefix) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = form.querySelector('button[type="submit"]');
-    setFormWaiting(button, true, "Přidávám...");
+    setFormWaiting(button, true, "Analyzuji...");
     state.requestInProgress = true;
     try {
       const payload = await buildSourcePayload(prefix);
@@ -1388,7 +1388,7 @@ function bindOneSourceForm(room, prefix) {
       state.rooms = result.store.rooms;
       state.activeTool = "sources";
       state.sourceDialogOpen = false;
-      addToast("Zdroj přidán");
+      addToast("Zdroj přidán a analyzován");
       renderRoom();
     } catch (error) {
       addToast(error.message || "Zdroj se nepovedlo přidat.");
