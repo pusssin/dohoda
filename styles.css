@@ -4125,12 +4125,15 @@ form.private-main-composer .send-arrow,
 
 /* Final user-tuned dashboard glass */
 .topbar {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  justify-content: initial;
   background: color-mix(in srgb, var(--vision-glass) 50%, transparent);
 }
 
 .topbar-actions {
-  margin-left: auto;
+  justify-self: center;
+  margin-left: 0;
 }
 
 .topbar-icon-actions {
@@ -4138,7 +4141,8 @@ form.private-main-composer .send-arrow,
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin-left: 18px;
+  justify-self: end;
+  margin-left: 0;
 }
 
 .topbar-icon-actions .mode-orb,
@@ -4149,9 +4153,9 @@ form.private-main-composer .send-arrow,
 .quiet-profile {
   margin-top: 28px;
   background:
-    radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--future-accent) 8%, transparent), transparent 34rem),
-    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--future-accent-2) 7%, transparent), transparent 30rem),
-    color-mix(in srgb, var(--vision-glass-strong) 50%, transparent);
+    radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--future-accent) 6%, transparent), transparent 34rem),
+    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--future-accent-2) 5%, transparent), transparent 30rem),
+    color-mix(in srgb, var(--vision-glass-strong) 35%, transparent);
 }
 
 @media (max-width: 680px) {
@@ -4162,16 +4166,16 @@ form.private-main-composer .send-arrow,
 
 :root:not([data-theme="dark"]) .quiet-profile {
   background:
-    radial-gradient(circle at 20% -10%, rgba(93, 131, 215, 0.06), transparent 34rem),
-    radial-gradient(circle at 88% 8%, rgba(105, 200, 189, 0.06), transparent 30rem),
-    rgba(172, 184, 198, 0.5);
+    radial-gradient(circle at 20% -10%, rgba(93, 131, 215, 0.045), transparent 34rem),
+    radial-gradient(circle at 88% 8%, rgba(105, 200, 189, 0.045), transparent 30rem),
+    rgba(172, 184, 198, 0.35);
 }
 
 :root[data-theme="dark"] .quiet-profile {
   background:
-    radial-gradient(circle at 20% -10%, rgba(137, 174, 255, 0.08), transparent 34rem),
-    radial-gradient(circle at 88% 8%, rgba(133, 240, 223, 0.06), transparent 30rem),
-    rgba(41, 53, 68, 0.5);
+    radial-gradient(circle at 20% -10%, rgba(137, 174, 255, 0.055), transparent 34rem),
+    radial-gradient(circle at 88% 8%, rgba(133, 240, 223, 0.04), transparent 30rem),
+    rgba(41, 53, 68, 0.35);
 }
 
 :root[data-theme="dark"] .agreement-row.expanded {
@@ -4182,4 +4186,21 @@ form.private-main-composer .send-arrow,
 
 :root[data-theme="dark"] .agreement-row.expanded .agreement-detail {
   background: transparent;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .topbar-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+
+  .topbar-icon-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
