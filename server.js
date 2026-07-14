@@ -479,7 +479,7 @@ async function handleApi(req, res, url) {
       }
       try {
         source.status = "Analyzuji";
-        source.analysis = await analyzeSource(room, source);
+        source.analysis = await analyzeSource(room, source, 4500);
         source.status = source.analysis ? "Analyzováno" : source.status || "Uloženo";
         applySourceAnalysis(room, source);
         addDiary(room, "AI mediátor", `Zdroj „${source.title}“ byl automaticky přečten, shrnut a doplněn o otázky pro mediaci.`, "source-analysis");
@@ -1185,13 +1185,14 @@ async function transcribeAudioDataUrl(dataUrl, fileName = "audio.webm") {
   return String(data.text || "").slice(0, 180_000);
 }
 
-async function analyzeSource(room, source) {
+async function analyzeSource(room, source, timeoutMs = 16000) {
   if (source.kind === "link" && source.url && !source.extractedText) {
-    source.extractedText = await fetchReadableLinkText(source.url);
+    const linkTimeout = Math.min(8000, Math.max(1500, Math.floor(timeoutMs / 2)));
+    source.extractedText = await fetchReadableLinkText(source.url, linkTimeout);
     if (source.extractedText) source.status = "Přečteno";
   }
   const sourceText = source.extractedText || source.url || source.note || source.title;
-  if (source.kind === "image" && source.dataUrl && openaiApiKey) return analyzeImageSource(room, source);
+  if (source.kind === "image" && source.dataUrl && openaiApiKey) return analyzeImageSource(room, source, Math.min(timeoutMs, 9000));
   if (!sourceText) return "Zdroj byl uložen, ale zatím z něj není čitelný text pro analýzu.";
   if (!openaiApiKey) return fallbackSourceAnalysis(source);
   try {
@@ -1217,7 +1218,7 @@ async function analyzeSource(room, source) {
       ],
       max_output_tokens: 520,
     };
-    const response = await openaiResponsesRequest(payload, 16000);
+    const response = await openaiResponsesRequest(payload, timeoutMs);
     return extractResponseText(response) || fallbackSourceAnalysis(source);
   } catch (error) {
     console.warn("OpenAI source analysis fallback:", error.message);
@@ -1225,7 +1226,7 @@ async function analyzeSource(room, source) {
   }
 }
 
-async function analyzeImageSource(room, source) {
+async function analyzeImageSource(room, source, timeoutMs = 18000) {
   try {
     const payload = {
       model: openaiModel,
@@ -1245,7 +1246,7 @@ async function analyzeImageSource(room, source) {
       ],
       max_output_tokens: 520,
     };
-    const response = await openaiResponsesRequest(payload, 18000);
+    const response = await openaiResponsesRequest(payload, timeoutMs);
     return extractResponseText(response) || fallbackSourceAnalysis(source);
   } catch (error) {
     console.warn("OpenAI image analysis fallback:", error.message);
@@ -1253,7 +1254,7 @@ async function analyzeImageSource(room, source) {
   }
 }
 
-async function fetchReadableLinkText(url) {
+async function fetchReadableLinkText(url, timeoutMs = 8000) {
   try {
     const parsed = new URL(url);
     if (!["http:", "https:"].includes(parsed.protocol)) return "";
@@ -1262,7 +1263,7 @@ async function fetchReadableLinkText(url) {
         "User-Agent": "DohodaMediator/0.1",
         Accept: "text/html,text/plain,application/json;q=0.8,*/*;q=0.2",
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return "";
     const contentType = response.headers.get("content-type") || "";
