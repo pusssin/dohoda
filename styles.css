@@ -3271,6 +3271,75 @@ form.private-main-composer .send-arrow,
   gap: 10px;
 }
 
+/* Cleaner choice controls */
+.toggle-line {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border-radius: 13px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--vision-glass-strong) 54%, transparent);
+  color: var(--ink);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.toggle-line:hover {
+  border-color: color-mix(in srgb, var(--future-accent) 34%, var(--line));
+  background: color-mix(in srgb, var(--vision-glass-strong) 78%, var(--blue-soft));
+}
+
+.toggle-line:has(input[type="checkbox"]:checked) {
+  border-color: color-mix(in srgb, var(--future-accent-2) 46%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 9%, transparent), transparent 62%),
+    color-mix(in srgb, var(--vision-glass-strong) 82%, var(--green-soft));
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--future-accent-2) 8%, transparent);
+}
+
+.toggle-line input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 84%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vision-glass-strong) 86%, transparent);
+  box-shadow: none;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.toggle-line input[type="checkbox"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.toggle-line input[type="checkbox"]:checked {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
+}
+
+.toggle-line input[type="checkbox"]:checked::before {
+  background: #ffffff;
+  transform: scale(1);
+}
+
+.toggle-line input[type="checkbox"]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--future-accent) 22%, transparent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
   .composer-box textarea {
     padding-right: 92px;
