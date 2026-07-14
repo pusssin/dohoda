@@ -1449,11 +1449,19 @@ function topbar() {
       </button>
       <div class="topbar-actions">
         <span class="user-pill">${escapeHtml(user?.name || "")}${user?.admin ? " · admin" : ""}</span>
-        <button class="theme-toggle" type="button" onclick="toggleTheme()">${themeLabel()}</button>
         <button class="secondary-btn" type="button" onclick="route('profile')">Profil</button>
         ${user?.admin ? `<button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>` : ""}
         <button class="ghost-btn" type="button" onclick="logout()">Odhlásit</button>
       </div>
+      <button
+        class="mode-orb"
+        type="button"
+        onclick="toggleTheme()"
+        aria-label="${themeLabel()}"
+        data-tip="${themeLabel()}"
+      >
+        <span aria-hidden="true">${state.theme === "dark" ? "☼" : "☾"}</span>
+      </button>
       <button
         class="sound-orb ${state.soundEnabled ? "active" : ""}"
         type="button"

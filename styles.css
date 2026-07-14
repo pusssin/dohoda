@@ -4018,3 +4018,107 @@ form.private-main-composer .send-arrow,
 .mediation-settings .compact-toggle:has(input[type="checkbox"]:checked) {
   box-shadow: none;
 }
+
+/* Final polish: clearer grid through glass, darker expanded agreements, icon-only mode controls */
+.topbar,
+.agreement-row,
+.quiet-new-form,
+.card,
+.tool-card,
+.room-hero,
+.room-panel,
+.room-side-panel,
+.side-tools,
+.mediation-settings,
+.invite-box {
+  background-color: transparent;
+}
+
+.topbar {
+  background: color-mix(in srgb, var(--vision-glass) 62%, transparent);
+}
+
+.agreement-row,
+.quiet-new-form,
+.card {
+  background: color-mix(in srgb, var(--vision-glass-strong) 48%, transparent);
+}
+
+.tool-card,
+.room-panel,
+.room-side-panel,
+.side-tools,
+.mediation-settings,
+.invite-box {
+  background: color-mix(in srgb, var(--vision-glass-strong) 56%, transparent);
+}
+
+.agreement-row.expanded {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--conflict-soft, var(--surface-soft)) 82%, rgba(8, 13, 20, 0.42)), rgba(4, 7, 12, 0.16) 58%),
+    color-mix(in srgb, var(--vision-glass-strong) 76%, rgba(5, 8, 14, 0.38));
+}
+
+:root:not([data-theme="dark"]) .agreement-row.expanded {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--conflict-soft, var(--surface-soft)) 78%, rgba(96, 111, 132, 0.24)), rgba(172, 187, 205, 0.16) 58%),
+    color-mix(in srgb, var(--vision-glass-strong) 72%, rgba(123, 139, 160, 0.2));
+}
+
+.mode-orb,
+.sound-orb {
+  width: 38px;
+  height: 38px;
+  margin-left: 8px;
+  font-size: 0.94rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--vision-glass-strong) 58%, transparent);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.mode-orb {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 34px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.mode-orb:hover,
+.sound-orb:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--future-accent-2) 46%, var(--line));
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--future-accent-2) 10%, transparent), 0 16px 40px rgba(0, 0, 0, 0.15);
+}
+
+.mode-orb::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(230px, 74vw);
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--ink);
+  box-shadow: var(--lift);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.mode-orb:hover::after,
+.mode-orb:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
