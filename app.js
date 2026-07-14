@@ -21,6 +21,7 @@ const state = {
   soundPrimed: false,
   audioContext: null,
   roomActivitySignatures: {},
+  collapsedMessages: {},
   online: false,
   aiConfigured: false,
   databaseConfigured: false,
@@ -469,7 +470,7 @@ function renderRoom() {
             </div>
             ${mediationProcessPanel(room)}
             ${privateBridgePanel(room)}
-            <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message) => messageView({ ...message, me: !message.ai })).join("")}</div>
+            <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message, index) => messageView({ ...message, me: !message.ai }, index)).join("")}</div>
             <form id="privateMediatorForm" class="composer private-main-composer">
               <div class="composer-box">
                 <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Enter odešle, Shift+Enter vloží nový řádek."></textarea>
@@ -1032,11 +1033,13 @@ function listTool(title, items) {
   `;
 }
 
-function messageView(message) {
+function messageView(message, index = 0) {
   const mine = message.me || message.author === roomParticipantName();
   const parsed = parseDraftSuggestions(message.text);
   const roleClass = message.ai ? "speaker-ai" : mine ? "speaker-me" : "speaker-other";
   const accent = speakerAccent(message, mine);
+  const collapseKey = messageCollapseKey(message, index);
+  const collapsed = Boolean(state.collapsedMessages[collapseKey]);
   const label = message.mediatedFrom
     ? `Mediovaný přenos od ${message.mediatedFrom}`
     : message.activity
@@ -1044,9 +1047,10 @@ function messageView(message) {
       : message.author;
   const decision = message.decision ? `<small>${escapeHtml(message.decision)}</small>` : "";
   return `
-    <article class="message ${roleClass} ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}" style="--speaker: ${accent};">
+    <article class="message ${roleClass} ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""} ${collapsed ? "collapsed" : ""}" style="--speaker: ${accent};">
       <div class="message-head">
         <strong>${escapeHtml(label)}</strong>
+        <button class="message-collapse-btn" type="button" data-toggle-message="${escapeHtml(collapseKey)}" aria-label="${collapsed ? "Rozbalit zprávu" : "Sbalit zprávu"}">${collapsed ? "+" : "−"}</button>
       </div>
       ${decision}
       <p>${escapeHtml(parsed.body || message.text)}</p>
@@ -1062,6 +1066,15 @@ function messageView(message) {
       ` : ""}
     </article>
   `;
+}
+
+function messageCollapseKey(message, index) {
+  const raw = `${state.activeRoomId}|${index}|${message.author || ""}|${message.text || ""}|${message.decision || ""}`;
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    hash = (hash * 31 + raw.charCodeAt(i)) >>> 0;
+  }
+  return `msg-${hash.toString(36)}`;
 }
 
 function speakerAccent(message, mine) {
@@ -1217,6 +1230,14 @@ function bindRoomEvents(room, inviteUrl) {
       textarea.focus();
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       addToast("Návrh vložen do zprávy");
+    });
+  });
+
+  document.querySelectorAll("[data-toggle-message]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.toggleMessage;
+      state.collapsedMessages[key] = !state.collapsedMessages[key];
+      renderRoom();
     });
   });
 

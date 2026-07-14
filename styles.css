@@ -3272,6 +3272,45 @@ form.private-main-composer .send-arrow,
   gap: 10px;
 }
 
+.message-collapse-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--speaker, var(--line)) 28%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vision-glass-strong) 46%, transparent);
+  color: color-mix(in srgb, var(--speaker, var(--ink)) 62%, var(--ink));
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.message-collapse-btn:hover {
+  border-color: color-mix(in srgb, var(--speaker, var(--future-accent)) 58%, var(--line));
+}
+
+.message.collapsed {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.message.collapsed p {
+  display: block;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message.collapsed small,
+.message.collapsed .draft-suggestions {
+  display: none;
+}
+
 .section-actions {
   display: flex;
   align-items: center;
