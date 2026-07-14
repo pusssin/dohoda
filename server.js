@@ -715,38 +715,31 @@ function mediationActivityTopic(text) {
 }
 
 async function openaiMediatorReply(room, text, author) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: openaiModel,
-      input: [
-        {
-          role: "system",
-          content: [
-            "Jsi Dohoda, nezaujatý AI mediátor v konfliktu. Nejsi soudce a neurčuješ vítěze.",
-            "Pomáháš stranám rychle najít společný bod, oddělit fakta od interpretací, pojmenovat potřeby a posunout se o jeden konkrétní krok.",
-            "Odpovídej česky, stručně, živě, nadějně a bez chladného korporátního tónu.",
-            "Když je zpráva ostrá, zraněná nebo chaotická, přelož ji pro ostatní strany do srozumitelnější a méně zraňující řeči. Nepřepisuj význam tak, aby se autor ztratil.",
-            "Když je zapnutý automatický překlad mezi stranami, tvoje odpověď má být hlavně most: bezpečné jádro sdělení, napojení na zájmy druhé strany a jeden další krok.",
-            "Neptej se zbytečně na svolení. Pokud je sdělení bezpečné shrnout, shrň ho a propoj strany.",
-            "Nepředstírej právní ani terapeutickou autoritu.",
-            mediationPlaybook,
-            styleInstruction(room),
-          ].join(" "),
-        },
-        {
-          role: "user",
-          content: buildMediatorContext(room, text, author),
-        },
-      ],
-      temperature: 0.72,
-      max_output_tokens: 420,
-    }),
-  });
+  const response = await openaiResponsesRequest({
+    model: openaiModel,
+    input: [
+      {
+        role: "system",
+        content: [
+          "Jsi Dohoda, nezaujatý AI mediátor v konfliktu. Nejsi soudce a neurčuješ vítěze.",
+          "Pomáháš stranám rychle najít společný bod, oddělit fakta od interpretací, pojmenovat potřeby a posunout se o jeden konkrétní krok.",
+          "Odpovídej česky, stručně, živě, nadějně a bez chladného korporátního tónu.",
+          "Když je zpráva ostrá, zraněná nebo chaotická, přelož ji pro ostatní strany do srozumitelnější a méně zraňující řeči. Nepřepisuj význam tak, aby se autor ztratil.",
+          "Když je zapnutý automatický překlad mezi stranami, tvoje odpověď má být hlavně most: bezpečné jádro sdělení, napojení na zájmy druhé strany a jeden další krok.",
+          "Neptej se zbytečně na svolení. Pokud je sdělení bezpečné shrnout, shrň ho a propoj strany.",
+          "Nepředstírej právní ani terapeutickou autoritu.",
+          mediationPlaybook,
+          styleInstruction(room),
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: buildMediatorContext(room, text, author),
+      },
+    ],
+    temperature: 0.72,
+    max_output_tokens: 420,
+  }, 12000);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -795,40 +788,33 @@ function buildMediatorContext(room, text, author) {
 }
 
 async function openaiPrivateMediatorReply(room, text, author) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: openaiModel,
-      input: [
-        {
-          role: "system",
-          content: [
-            "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem.",
-            "Tvým cílem je rychle pochopit podstatu, najít společný bod s druhou stranou a udělat další mediační krok.",
-            "Odpovídej česky, empaticky, živě, velmi stručně a povzbudivě. Nezněj stroze, terapeuticky ani sportovně-direktivně.",
-            "Varianty formulace dávej přesně podle nastavení místnosti. Když jsou zapnuté, napiš je na konec jako samostatný blok s nadpisem 'Návrhy formulace:' a očísluj je.",
-            "V každé odpovědi rozlišuj dvě věci: co je soukromá podpora pro tohoto účastníka a co je podstata, kterou lze bezpečně předat ostatním stranám.",
-            "Vždy výslovně pojmenuj mediační rozhodnutí: co zůstává soukromé, co lze předat jako shrnutí a co zatím nepředávat.",
-            "Drž fázi mediace, ale nebuď pomalý. Pokud vidíš jasné napojení mezi stranami, pojmenuj ho hned.",
-            "Pokud účastník ventiluje, krátce uznej emoci a ihned ji přelož do potřeby nebo dalšího kroku.",
-            "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
-            mediationPlaybook,
-            styleInstruction(room),
-          ].join(" "),
-        },
-        {
-          role: "user",
-          content: buildPrivateMediatorContext(room, text, author),
-        },
-      ],
-      temperature: 0.7,
-      max_output_tokens: 360,
-    }),
-  });
+  const response = await openaiResponsesRequest({
+    model: openaiModel,
+    input: [
+      {
+        role: "system",
+        content: [
+          "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem.",
+          "Tvým cílem je rychle pochopit podstatu, najít společný bod s druhou stranou a udělat další mediační krok.",
+          "Odpovídej česky, empaticky, živě, velmi stručně a povzbudivě. Nezněj stroze, terapeuticky ani sportovně-direktivně.",
+          "Varianty formulace dávej přesně podle nastavení místnosti. Když jsou zapnuté, napiš je na konec jako samostatný blok s nadpisem 'Návrhy formulace:' a očísluj je.",
+          "V každé odpovědi rozlišuj dvě věci: co je soukromá podpora pro tohoto účastníka a co je podstata, kterou lze bezpečně předat ostatním stranám.",
+          "Vždy výslovně pojmenuj mediační rozhodnutí: co zůstává soukromé, co lze předat jako shrnutí a co zatím nepředávat.",
+          "Drž fázi mediace, ale nebuď pomalý. Pokud vidíš jasné napojení mezi stranami, pojmenuj ho hned.",
+          "Pokud účastník ventiluje, krátce uznej emoci a ihned ji přelož do potřeby nebo dalšího kroku.",
+          "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
+          mediationPlaybook,
+          styleInstruction(room),
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: buildPrivateMediatorContext(room, text, author),
+      },
+    ],
+    temperature: 0.7,
+    max_output_tokens: 360,
+  }, 14000);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -842,37 +828,30 @@ async function openaiPrivateMediatorReply(room, text, author) {
 }
 
 async function openaiRecipientBridgeReply(room, text, author, recipient) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: openaiModel,
-      input: [
-        {
-          role: "system",
-          content: [
-            "Jsi Dohoda, AI mediátor, který bezpečně překládá soukromé sdělení jedné strany pro jinou stranu konfliktu.",
-            "Cíl: adresát má vědět, o čem druhá strana komunikuje, ale nemá být zbytečně zasažen surovou formulací.",
-            "Zachovej podstatu sdělení, potřebu a emoci autora. Pokud je to užitečné, uveď, že původní tón mohl být ostřejší nebo zraněný, ale neeskaluj.",
-            "Nemluv jako korporátní filtr. Buď lidský, stručný, svižný a srozumitelný.",
-            "Hledej společný bod a navrhni jeden konkrétní další krok. Neprodlužuj proces otázkami, pokud můžeš nabídnout bezpečný tah.",
-            "Nepředstírej jistotu o vnitřních motivech autora.",
-            mediationPlaybook,
-            styleInstruction(room),
-          ].join(" "),
-        },
-        {
-          role: "user",
-          content: buildRecipientBridgeContext(room, text, author, recipient),
-        },
-      ],
-      temperature: 0.72,
-      max_output_tokens: 220,
-    }),
-  });
+  const response = await openaiResponsesRequest({
+    model: openaiModel,
+    input: [
+      {
+        role: "system",
+        content: [
+          "Jsi Dohoda, AI mediátor, který bezpečně překládá soukromé sdělení jedné strany pro jinou stranu konfliktu.",
+          "Cíl: adresát má vědět, o čem druhá strana komunikuje, ale nemá být zbytečně zasažen surovou formulací.",
+          "Zachovej podstatu sdělení, potřebu a emoci autora. Pokud je to užitečné, uveď, že původní tón mohl být ostřejší nebo zraněný, ale neeskaluj.",
+          "Nemluv jako korporátní filtr. Buď lidský, stručný, svižný a srozumitelný.",
+          "Hledej společný bod a navrhni jeden konkrétní další krok. Neprodlužuj proces otázkami, pokud můžeš nabídnout bezpečný tah.",
+          "Nepředstírej jistotu o vnitřních motivech autora.",
+          mediationPlaybook,
+          styleInstruction(room),
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: buildRecipientBridgeContext(room, text, author, recipient),
+      },
+    ],
+    temperature: 0.72,
+    max_output_tokens: 220,
+  }, 7000);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -883,6 +862,29 @@ async function openaiRecipientBridgeReply(room, text, author, recipient) {
   const output = extractResponseText(data);
   if (!output) throw new Error("OpenAI recipient bridge response did not contain text");
   return output.trim();
+}
+
+async function openaiResponsesRequest(payload, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`OpenAI request timed out after ${timeoutMs} ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function buildPrivateMediatorContext(room, text, author) {
