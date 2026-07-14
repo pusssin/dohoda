@@ -478,7 +478,6 @@ function renderRoom() {
                 </div>
               </div>
             </form>
-            ${state.sourceDialogOpen ? sourceDialog(room) : ""}
             <details class="side-tools chat-tools" ${state.advancedOpen ? "open" : ""}>
               <summary>Analýza a dohoda</summary>
               <div class="drawer-actions">
@@ -508,6 +507,7 @@ function renderRoom() {
         </div>
       </div>
     </section>
+    ${state.sourceDialogOpen ? sourceDialog(room) : ""}
   `;
 
   bindRoomEvents(room, inviteUrl);
@@ -727,7 +727,7 @@ function mediationSettingsPanel(room) {
         <span>Automaticky přerámovat zprávu pro ostatní</span>
         <span class="hint-dot" aria-label="${escapeHtml(autoBridgeHelp)}">?</span>
       </label>
-      <label class="toggle-line" title="${escapeHtml(adaptHelp)}">
+      <label class="toggle-line compact-toggle" title="${escapeHtml(adaptHelp)}">
         <input id="adaptToRecipient" type="checkbox" ${settings.adaptToRecipient ? "checked" : ""} />
         <span>Přizpůsobovat tón adresátovi</span>
         <span class="hint-dot" aria-label="${escapeHtml(adaptHelp)}">?</span>

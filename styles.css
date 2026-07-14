@@ -3118,7 +3118,8 @@ body {
 }
 
 .compact-toggle {
-  max-width: 54%;
+  width: 100%;
+  max-width: none;
   min-height: 34px;
   padding: 10px 12px;
   gap: 8px;
@@ -3126,10 +3127,11 @@ body {
 }
 
 .compact-toggle input[type="checkbox"] {
-  width: 9px;
-  min-width: 9px;
-  height: 9px;
-  min-height: 9px;
+  width: 5px;
+  min-width: 5px;
+  height: 5px;
+  min-height: 5px;
+  border-width: 1px;
 }
 
 .send-arrow {
@@ -3843,15 +3845,19 @@ form.private-main-composer .send-arrow,
   position: fixed;
   inset: 0;
   z-index: 30;
-  display: grid;
-  place-items: center;
-  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
   background: color-mix(in srgb, #07101b 34%, transparent);
   backdrop-filter: blur(14px);
 }
 
 .source-dialog {
   width: min(680px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
   display: grid;
   gap: 14px;
   border: 1px solid var(--line);
@@ -3899,7 +3905,8 @@ form.private-main-composer .send-arrow,
 }
 
 .compact-toggle {
-  max-width: 54%;
+  width: 100%;
+  max-width: none;
   min-height: 34px;
   padding: 10px 12px;
   gap: 8px;
@@ -3907,8 +3914,9 @@ form.private-main-composer .send-arrow,
 }
 
 .compact-toggle input[type="checkbox"] {
-  width: 9px;
-  min-width: 9px;
-  height: 9px;
-  min-height: 9px;
+  width: 5px;
+  min-width: 5px;
+  height: 5px;
+  min-height: 5px;
+  border-width: 1px;
 }
