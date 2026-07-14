@@ -1,7 +1,9 @@
 const app = document.getElementById("app");
 
+const initialHash = location.hash.replace("#", "");
+
 const state = {
-  view: location.hash.startsWith("#room-") ? "room" : "home",
+  view: initialHash === "admin" ? "admin" : location.hash.startsWith("#room-") ? "room" : "home",
   activeProfileId: "u1",
   activeRoomId: location.hash.replace("#", "") || "room-team",
   expandedProfileRoomId: "",
@@ -109,7 +111,13 @@ const roomTypes = ["Pracovní", "Rodinný", "Partnerský", "Obchodní", "Komunit
 function route(view, roomId) {
   state.view = view;
   if (roomId) state.activeRoomId = roomId;
-  history.pushState(null, "", view === "room" ? `${location.pathname}#${state.activeRoomId}` : location.pathname);
+  const target =
+    view === "room"
+      ? `${location.pathname}#${state.activeRoomId}`
+      : view === "admin"
+        ? `${location.pathname}#admin`
+        : location.pathname;
+  history.pushState(null, "", target);
   render();
 }
 
@@ -118,6 +126,7 @@ function render() {
   if (state.view === "home") renderHome();
   if (state.view === "profile") renderProfile();
   if (state.view === "room") renderRoom();
+  if (state.view === "admin") renderAdmin();
 }
 
 function renderHome() {
@@ -440,6 +449,81 @@ function renderRoom() {
   `;
 
   bindRoomEvents(room, inviteUrl);
+}
+
+function renderAdmin() {
+  app.className = "app";
+  const activeRooms = state.rooms.filter((room) => !room.archived);
+  const archivedRooms = state.rooms.filter((room) => room.archived);
+  const participants = [...new Set(state.rooms.flatMap((room) => room.participants || []))];
+  const needsAttention = state.rooms.filter((room) => !room.archived && (room.progress || 0) < 35);
+  app.innerHTML = `
+    ${topbar()}
+    <section class="page workspace-page admin-page">
+      <header class="quiet-head">
+        <div>
+          <p class="room-kicker">Administrace</p>
+          <h1>Řízení Dohody</h1>
+          <p class="subtitle">Technický a procesní přehled místností bez čtení soukromých chatů účastníků.</p>
+        </div>
+        <div class="profile-metrics admin-metrics">
+          <span><strong>${activeRooms.length}</strong> aktivní místnosti</span>
+          <span><strong>${participants.length}</strong> účastníků</span>
+          <span><strong>${state.aiConfigured ? "AI" : "Demo"}</strong> mediátor</span>
+        </div>
+      </header>
+
+      <div class="admin-grid">
+        <section class="tool-card admin-card">
+          <h3>Stav systému</h3>
+          <ul>
+            <li>AI mediátor: ${state.aiConfigured ? "připojen" : "demo režim"}</li>
+            <li>Databáze: ${state.databaseConfigured ? "připojena" : "lokální paměť"}</li>
+            <li>Archivované místnosti: ${archivedRooms.length}</li>
+            <li>Místnosti vyžadující pozornost: ${needsAttention.length}</li>
+          </ul>
+        </section>
+        <section class="tool-card admin-card">
+          <h3>Rychlé priority</h3>
+          <ul>
+            ${needsAttention.length ? needsAttention.map((room) => `<li>${escapeHtml(room.title)}: nízký posun (${room.progress || 0} %)</li>`).join("") : "<li>Žádná místnost teď nevypadá zaseknutě.</li>"}
+          </ul>
+        </section>
+      </div>
+
+      <section class="admin-table-wrap">
+        <div class="section-title">
+          <div>
+            <p class="room-kicker">Místnosti</p>
+            <h2>Provozní přehled</h2>
+          </div>
+        </div>
+        <div class="admin-table">
+          ${state.rooms.map((room) => adminRoomRow(room)).join("")}
+        </div>
+      </section>
+    </section>
+  `;
+
+  document.querySelectorAll("[data-admin-open-room]").forEach((button) => {
+    button.addEventListener("click", () => route("room", button.dataset.adminOpenRoom));
+  });
+}
+
+function adminRoomRow(room) {
+  const settings = mediationSettings(room);
+  return `
+    <article class="admin-row">
+      <div>
+        <strong>${escapeHtml(room.title)}</strong>
+        <p class="meta">${escapeHtml(room.type || "Místnost")} · ${escapeHtml(room.stage || room.status || "bez stavu")}</p>
+      </div>
+      <span>${room.participants?.length || 0} účastníků</span>
+      <span>${room.progress || 0} %</span>
+      <span>${settings.style}${settings.initiatorMode ? " + iniciátor" : ""}${settings.crazyMode ? " + crazy" : ""}</span>
+      <button class="secondary-btn" type="button" data-admin-open-room="${room.id}">Otevřít</button>
+    </article>
+  `;
 }
 
 function toolTab(id, label) {
@@ -904,6 +988,7 @@ function topbar() {
         <button class="theme-toggle" type="button" onclick="toggleTheme()">${themeLabel()}</button>
         <button class="ghost-btn" type="button" onclick="route('home')">Úvod</button>
         <button class="secondary-btn" type="button" onclick="route('profile')">Profil</button>
+        <button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>
       </div>
     </nav>
   `;
@@ -1271,7 +1356,10 @@ function escapeHtml(value) {
 }
 
 window.addEventListener("hashchange", () => {
-  if (location.hash.startsWith("#room-")) {
+  if (location.hash === "#admin") {
+    state.view = "admin";
+    render();
+  } else if (location.hash.startsWith("#room-")) {
     state.view = "room";
     state.activeRoomId = location.hash.replace("#", "");
     render();
