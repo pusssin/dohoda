@@ -1019,7 +1019,7 @@ function sourceView(source) {
       </div>
       ${source.url ? `<a class="source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.url)}</a>` : ""}
       ${source.excerpt ? `<p>${escapeHtml(source.excerpt)}</p>` : `<p class="meta">Soubor je uložený jako podklad. U netextových souborů bude analýza záviset na tom, zda z nich umíme získat text nebo přepis.</p>`}
-      ${source.analysis ? `<div class="source-analysis"><strong>AI analýza</strong><p>${escapeHtml(source.analysis)}</p></div>` : ""}
+      ${source.analysis ? `<div class="source-analysis"><strong>Shrnutí AI</strong><p>${escapeHtml(source.analysis)}</p></div>` : ""}
     </article>
   `;
 }

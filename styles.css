@@ -3062,9 +3062,8 @@ body {
   position: relative;
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--future-accent) 30%, rgba(255, 255, 255, 0.42));
-  background:
-    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.78), transparent 30%),
-    linear-gradient(145deg, color-mix(in srgb, var(--future-accent) 16%, var(--vision-glass-strong)), color-mix(in srgb, var(--future-accent-2) 18%, var(--vision-glass-soft)));
+  background: color-mix(in srgb, var(--vision-glass-strong) 76%, transparent);
+  box-shadow: none;
   color: var(--ink);
 }
 

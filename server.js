@@ -1191,9 +1191,13 @@ async function analyzeSource(room, source, timeoutMs = 16000) {
     source.extractedText = await fetchReadableLinkText(source.url, linkTimeout);
     if (source.extractedText) source.status = "Přečteno";
   }
+  if (!source.extractedText && source.dataUrl && source.kind !== "image" && source.kind !== "audio") {
+    source.extractedText = extractReadableDataUrlText(source);
+    if (source.extractedText) source.status = "Přečteno";
+  }
   const sourceText = source.extractedText || source.url || source.note || source.title;
   if (source.kind === "image" && source.dataUrl && openaiApiKey) return analyzeImageSource(room, source, Math.min(timeoutMs, 9000));
-  if (!sourceText) return "Zdroj byl uložen, ale zatím z něj není čitelný text pro analýzu.";
+  if (!sourceText) return fallbackSourceAnalysis(source);
   if (!openaiApiKey) return fallbackSourceAnalysis(source);
   try {
     const payload = {
@@ -1202,7 +1206,7 @@ async function analyzeSource(room, source, timeoutMs = 16000) {
         {
           role: "system",
           content:
-            "Jsi AI mediátor v aplikaci Dohoda. Analyzuj zdroj stručně, neutrálně a prakticky. Neřeš právní závěry. Vypiš: 1) fakta, 2) potřeby/obavy, 3) body pro dohodu, 4) otázky k ověření. Česky.",
+            "Jsi AI mediátor v aplikaci Dohoda. Analyzuj zdroj stručně, neutrálně a prakticky. Neřeš právní závěry. Vrať přesně tyto sekce v češtině: Krátké shrnutí: 2 až 3 věty. Co z toho plyne pro dohodu: 1 až 2 věty. Otázky pro mediaci: 3 konkrétní otázky. Další krok: 1 krátká věta.",
         },
         {
           role: "user",
@@ -1290,14 +1294,48 @@ function htmlToText(html) {
 
 function fallbackSourceAnalysis(source) {
   const preview = (source.extractedText || source.url || source.title || "").replace(/\s+/g, " ").trim().slice(0, 260);
+  const readable = Boolean(preview && preview !== source.title);
   return [
-    `Shrnutí: ${preview || "zdroj je uložený, ale není z něj dostupný čitelný text."}`,
-    "Možný význam pro dohodu: ověřit fakta, oddělit domněnky od potřeb a pojmenovat, co může pomoci posunu.",
-    "Otázky k ověření:",
+    `Krátké shrnutí: ${readable ? preview : "Zdroj je uložený, ale zatím z něj nemám dost čitelného obsahu. Pokud jde o PDF, sken nebo kancelářský dokument, pomůže vložit krátký výňatek textu nebo použít ruční analýzu po doplnění obsahu."}`,
+    "Co z toho plyne pro dohodu: Zdroj může sloužit jako podklad k ověření faktů a k oddělení domněnek od potřeb jednotlivých stran.",
+    "Otázky pro mediaci:",
     "- Která tvrzení ze zdroje jsou pro dohodu opravdu podstatná?",
     "- Co z toho je fakt, co interpretace a co potřeba některé strany?",
     "- Jaký jeden další krok by tento zdroj mohl zpřesnit?",
+    "Další krok: Doplňte jednu větu, proč je tento zdroj pro dohodu důležitý.",
   ].join("\n");
+}
+
+function extractReadableDataUrlText(source) {
+  try {
+    const match = String(source.dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return "";
+    const mime = match[1] || source.mime || "";
+    const buffer = Buffer.from(match[2], "base64");
+    if (mime.startsWith("text/") || /\.(txt|md|csv|json|html|xml|rtf)$/i.test(source.fileName || "")) {
+      return buffer.toString("utf8").replace(/\s+/g, " ").trim().slice(0, 180_000);
+    }
+    if (mime.includes("pdf") || /\.pdf$/i.test(source.fileName || "")) {
+      return roughPdfText(buffer).slice(0, 180_000);
+    }
+  } catch (error) {
+    console.warn("Source text extraction failed:", error.message);
+  }
+  return "";
+}
+
+function roughPdfText(buffer) {
+  const raw = buffer.toString("latin1");
+  const chunks = [];
+  for (const match of raw.matchAll(/\(([^()]{3,500})\)\s*T[jJ]/g)) chunks.push(match[1]);
+  if (chunks.length < 3) {
+    for (const match of raw.matchAll(/[A-Za-zÁ-ž0-9][A-Za-zÁ-ž0-9\s.,;:!?()[\]\/\-]{20,}/g)) chunks.push(match[0]);
+  }
+  return chunks
+    .map((text) => text.replace(/\\([()\\])/g, "$1").replace(/\\n|\\r|\\t/g, " "))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function applySourceAnalysis(room, source) {
