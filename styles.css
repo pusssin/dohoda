@@ -3119,17 +3119,17 @@ body {
 
 .compact-toggle {
   max-width: 54%;
-  min-height: 25px;
-  padding: 6px 8px;
-  gap: 6px;
-  font-size: 0.68rem;
+  min-height: 34px;
+  padding: 10px 12px;
+  gap: 8px;
+  font-size: inherit;
 }
 
 .compact-toggle input[type="checkbox"] {
-  width: 12px;
-  min-width: 12px;
-  height: 12px;
-  min-height: 12px;
+  width: 9px;
+  min-width: 9px;
+  height: 9px;
+  min-height: 9px;
 }
 
 .send-arrow {
@@ -3883,6 +3883,13 @@ form.private-main-composer .send-arrow,
   gap: 8px;
 }
 
+.protocol-actions .secondary-btn {
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 0.62rem;
+  border-radius: 999px;
+}
+
 .protocol-export-card pre {
   max-height: 520px;
   padding: 14px;
@@ -3893,15 +3900,15 @@ form.private-main-composer .send-arrow,
 
 .compact-toggle {
   max-width: 54%;
-  min-height: 25px;
-  padding: 6px 8px;
-  gap: 6px;
-  font-size: 0.68rem;
+  min-height: 34px;
+  padding: 10px 12px;
+  gap: 8px;
+  font-size: inherit;
 }
 
 .compact-toggle input[type="checkbox"] {
-  width: 12px;
-  min-width: 12px;
-  height: 12px;
-  min-height: 12px;
+  width: 9px;
+  min-width: 9px;
+  height: 9px;
+  min-height: 9px;
 }
