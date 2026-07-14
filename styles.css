@@ -1377,7 +1377,8 @@ body {
 
 .topbar-actions .ghost-btn,
 .topbar-actions .secondary-btn,
-.theme-toggle {
+.theme-toggle,
+.sound-toggle {
   min-height: 34px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -1386,10 +1387,17 @@ body {
 }
 
 .topbar-actions .secondary-btn,
-.theme-toggle {
+.theme-toggle,
+.sound-toggle {
   border-color: var(--line);
   background: var(--surface-soft);
   color: var(--ink);
+}
+
+.sound-toggle.active {
+  border-color: color-mix(in srgb, var(--future-accent-2) 48%, var(--line));
+  background: color-mix(in srgb, var(--future-accent-2) 16%, var(--surface-soft));
+  box-shadow: 0 0 22px color-mix(in srgb, var(--future-accent-2) 12%, transparent);
 }
 
 .topbar-actions .ghost-btn {

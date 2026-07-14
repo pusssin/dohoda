@@ -17,6 +17,10 @@ const state = {
   googleConfigured: false,
   sourceDialogOpen: false,
   theme: localStorage.getItem("dohoda.theme") || "light",
+  soundEnabled: localStorage.getItem("dohoda.soundEnabled") === "true",
+  soundPrimed: false,
+  audioContext: null,
+  roomActivitySignatures: {},
   online: false,
   aiConfigured: false,
   databaseConfigured: false,
@@ -1443,6 +1447,7 @@ function topbar() {
       </button>
       <div class="topbar-actions">
         <span class="user-pill">${escapeHtml(user?.name || "")}${user?.admin ? " · admin" : ""}</span>
+        <button class="sound-toggle ${state.soundEnabled ? "active" : ""}" type="button" onclick="toggleSoundNotifications()">${state.soundEnabled ? "Zvuk zapnutý" : "Zvuk"}</button>
         <button class="theme-toggle" type="button" onclick="toggleTheme()">${themeLabel()}</button>
         <button class="secondary-btn" type="button" onclick="route('profile')">Profil</button>
         ${user?.admin ? `<button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>` : ""}
@@ -1473,6 +1478,19 @@ function toggleTheme() {
   render();
 }
 
+async function toggleSoundNotifications() {
+  state.soundEnabled = !state.soundEnabled;
+  localStorage.setItem("dohoda.soundEnabled", String(state.soundEnabled));
+  if (state.soundEnabled) {
+    await primeNotificationSound();
+    rememberRoomActivity();
+    addToast("Zvukové oznámení zapnuto");
+  } else {
+    addToast("Zvukové oznámení vypnuto");
+  }
+  render();
+}
+
 function themeLabel() {
   return state.theme === "dark" ? "Světlý režim" : "Tmavý režim";
 }
@@ -1489,6 +1507,74 @@ function activeRoom() {
   if (room) return room;
   state.activeRoomId = state.rooms[0].id;
   return state.rooms[0];
+}
+
+function roomActivitySignature(room) {
+  if (!room) return "";
+  const name = state.sessionName || activeProfile().name;
+  const privateMessages = room.privateConversations?.[name] || [];
+  return [
+    room.id,
+    room.participants?.length || 0,
+    privateMessages.length,
+    room.messages?.length || 0,
+    room.diary?.length || 0,
+    room.sources?.length || 0,
+    room.progress || 0,
+    room.stage || "",
+  ].join("|");
+}
+
+function rememberRoomActivity() {
+  const room = activeRoom();
+  if (!room) return;
+  state.roomActivitySignatures[room.id] = roomActivitySignature(room);
+}
+
+function maybeNotifyRoomActivity(previousSignature) {
+  const room = activeRoom();
+  if (!room) return;
+  const nextSignature = roomActivitySignature(room);
+  if (state.soundEnabled && previousSignature && nextSignature !== previousSignature) {
+    playNotificationSound();
+  }
+  state.roomActivitySignatures[room.id] = nextSignature;
+}
+
+async function primeNotificationSound() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!state.audioContext) state.audioContext = new AudioContextClass();
+    if (state.audioContext.state === "suspended") await state.audioContext.resume();
+    state.soundPrimed = true;
+  } catch {
+    state.soundPrimed = false;
+  }
+}
+
+function playNotificationSound() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!state.audioContext) state.audioContext = new AudioContextClass();
+    const context = state.audioContext;
+    if (context.state === "suspended") return;
+    const now = context.currentTime;
+    const gain = context.createGain();
+    const tone = context.createOscillator();
+    tone.type = "sine";
+    tone.frequency.setValueAtTime(740, now);
+    tone.frequency.exponentialRampToValueAtTime(980, now + 0.08);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.055, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    tone.connect(gain).connect(context.destination);
+    tone.start(now);
+    tone.stop(now + 0.18);
+  } catch {
+    // Zvuk je jen doplněk; aplikace pokračuje i bez něj.
+  }
 }
 
 function ensurePrivateNotes(roomId) {
@@ -1895,13 +1981,16 @@ async function start() {
     await loadRemoteState();
     await applyParticipantFromUrl();
   }
+  rememberRoomActivity();
   render();
   setInterval(async () => {
     if (state.view !== "room") return;
     if (state.requestInProgress) return;
     const focused = document.activeElement;
     if (focused && ["INPUT", "TEXTAREA", "SELECT"].includes(focused.tagName)) return;
+    const previousSignature = state.roomActivitySignatures[state.activeRoomId] || roomActivitySignature(activeRoom());
     await loadRemoteState();
+    maybeNotifyRoomActivity(previousSignature);
     renderRoom();
   }, 2500);
 }
