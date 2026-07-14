@@ -124,9 +124,9 @@ function renderHome() {
   app.innerHTML = `
     <section class="entry" aria-label="Vstup do aplikace">
       <div class="entry-title">
-        <div class="mark" aria-hidden="true">D</div>
+        ${logoMark()}
         <h1>Dohoda</h1>
-        <p class="subtitle">Nezaujatý AI mediátor pro konflikty, které potřebují klidný prostor, jasný proces a konkrétní výsledek.</p>
+        <p class="subtitle">Nezaujatý AI mediátor, který rychle hledá průsečíky, propojuje strany a vede konflikt ke konkrétnímu dalšímu kroku.</p>
         <button class="theme-toggle entry-theme" type="button" onclick="toggleTheme()">${themeLabel()}</button>
       </div>
       <form id="profileForm" class="entry-form">
@@ -250,7 +250,7 @@ function renderJoinRoom(room) {
   app.innerHTML = `
     <section class="entry" aria-label="Připojení do místnosti" style="${theme.style}">
       <div class="entry-title">
-        <div class="mark" aria-hidden="true">D</div>
+        ${logoMark()}
         <h1>Připojit se</h1>
         <p class="subtitle">Byli jste pozváni do místnosti „${escapeHtml(room.title)}“. Zadejte jméno, pod kterým budete v konfliktu vystupovat.</p>
         ${conflictMeter(room)}
@@ -396,7 +396,7 @@ function renderRoom() {
               <div>
                 <p class="room-kicker">Hlavní prostor</p>
                 <h2>${escapeHtml(state.sessionName)} + AI mediátor</h2>
-                <p class="meta">Vaše slova se vám uloží přesně tak, jak je napíšete. Ostatním účastníkům mediátor ukáže bezpečnější podstatu a pojmenuje, jaké téma se právě řeší.</p>
+                <p class="meta">Napište napřímo, co je potřeba. Mediátor z toho vytáhne podstatu, najde průsečík a ostatním předá bezpečné jádro.</p>
               </div>
               <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
             </div>
@@ -404,7 +404,7 @@ function renderRoom() {
             ${privateBridgePanel(room)}
             <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message) => messageView({ ...message, me: !message.ai })).join("")}</div>
             <form id="privateMediatorForm" class="composer private-main-composer">
-              <textarea id="privateMediatorText" rows="4" placeholder="Napište svůj pohled. Mediátor ho ostatním případně přeloží bezpečněji."></textarea>
+              <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Mediátor propojí podstatu s další stranou."></textarea>
               <button class="primary-btn" type="submit">Poslat</button>
             </form>
             <details class="side-tools chat-tools" ${state.advancedOpen ? "open" : ""}>
@@ -473,7 +473,7 @@ function mediationSettingsPanel(room) {
         </select>
       </label>
       <label>
-        Počet návrhů formulace
+        Detail formulací, když je potřeba
         <select id="mediationVariants">
           <option value="1" ${settings.variants === 1 ? "selected" : ""}>1 varianta</option>
           <option value="2" ${settings.variants === 2 ? "selected" : ""}>2 varianty</option>
@@ -736,7 +736,7 @@ function bindRoomEvents(room, inviteUrl) {
     conversation.push({ author, text });
     conversation.push({
       author: "AI mediátor",
-      text: "AI mediátor připravuje odpověď pro vás a bezpečný přenos podstaty pro ostatní účastníky...",
+      text: "AI mediátor hledá průsečík a připravuje bezpečný přenos pro ostatní...",
       ai: true,
       pending: true,
     });
@@ -795,7 +795,7 @@ function topbar() {
   return `
     <nav class="topbar">
       <button class="brand ghost-btn" type="button" onclick="route('profile')">
-        <span class="mark" aria-hidden="true">D</span>
+        ${logoMark()}
         <strong>Dohoda</strong>
       </button>
       <div class="topbar-actions">
@@ -804,6 +804,20 @@ function topbar() {
         <button class="secondary-btn" type="button" onclick="route('profile')">Profil</button>
       </div>
     </nav>
+  `;
+}
+
+function logoMark() {
+  return `
+    <span class="mark handshake-logo" aria-hidden="true">
+      <svg viewBox="0 0 48 48" role="img">
+        <path class="hand-left" d="M7 25.5l8.2-8.2c2.1-2.1 5.5-2.1 7.6 0l2.2 2.2" />
+        <path class="hand-right" d="M41 25.5l-8.2-8.2c-2.1-2.1-5.5-2.1-7.6 0l-9.4 9.4c-1.2 1.2-.4 3.3 1.3 3.3h2.2c1.5 0 2.9-.6 4-1.7l2.3-2.3" />
+        <path class="shake" d="M22.8 28.6l4.7 4.7c1.5 1.5 3.8 1.5 5.3 0l6.7-6.7" />
+        <path class="cuff-left" d="M5.5 27.5l6 6" />
+        <path class="cuff-right" d="M42.5 27.5l-6 6" />
+      </svg>
+    </span>
   `;
 }
 
@@ -897,19 +911,19 @@ function conflictMeter(room) {
 
 function conflictStage(progress) {
   if (progress >= 86) return "zelená: dohoda se rýsuje";
-  if (progress >= 58) return "olivová: hledáme konkrétní pravidla";
-  if (progress >= 30) return "jantarová: konflikt se zklidňuje";
+  if (progress >= 58) return "tyrkysová: rýsuje se průsečík";
+  if (progress >= 30) return "modrá: konflikt se strukturuje";
   return "červená: začátek konfliktu";
 }
 
 function conflictTheme(room) {
   const progress = Math.max(0, Math.min(100, room.progress ?? 0));
   const red = [196, 83, 90];
-  const amber = [190, 147, 75];
+  const neutral = [93, 131, 215];
   const green = [78, 151, 124];
   const firstHalf = progress < 50;
-  const from = firstHalf ? red : amber;
-  const to = firstHalf ? amber : green;
+  const from = firstHalf ? red : neutral;
+  const to = firstHalf ? neutral : green;
   const ratio = firstHalf ? progress / 50 : (progress - 50) / 50;
   const color = mixColor(from, to, ratio);
   const soft = mixColor(color, [255, 254, 250], 0.78);

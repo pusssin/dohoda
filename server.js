@@ -22,16 +22,25 @@ const defaultMediationSettings = {
 
 const styleInstructions = {
   warm:
-    "Tón je vřelý, lidský, povzbuzující a nadějný. Vyhýbej se studenému poradenskému jazyku. Používej běžnou češtinu.",
+    "Tón je vřelý, svižný, lidský a lehce optimistický. Mluv krátce, bez poradenské vaty.",
   calm:
-    "Tón je klidný, citlivý a opatrný. Nejprve uznej emoci, potom jemně nabídni další pohled.",
+    "Tón je klidný, citlivý a efektivní. Uklidni situaci jednou větou a rychle veď k dalšímu kroku.",
   clear:
-    "Tón je srozumitelný, strukturovaný a laskavě věcný. Drž se krátkých kroků a jasných formulací.",
+    "Tón je srozumitelný, strukturovaný a akční. Dej jasný průsečík a jeden konkrétní krok.",
   direct:
-    "Tón je přímý, ale ne tvrdý. Pojmenuj podstatu bez obviňování a nabídni praktickou cestu dál.",
+    "Tón je přímý, energický a ne tvrdý. Nečekej zbytečně na svolení, když můžeš bezpečně posunout proces.",
   authentic:
-    "Tón zachovává maximum autenticity autora. Nevyhlazuj sdělení do sterilní fráze. Zjemni jen to, co by zbytečně zraňovalo nebo bránilo porozumění, a jasně odděl původní emoci od bezpečnější formulace.",
+    "Tón zachovává autenticitu autora. Nevyhlazuj sdělení do sterilní fráze; jen odstraň útoky, které brání porozumění.",
 };
+
+const mediationPlaybook = [
+  "Pracuj zájmově: hledej potřeby a zájmy pod pozicemi, ne vítěze sporu.",
+  "Používej nenásilnou komunikaci: pozorování, pocit, potřeba, prosba.",
+  "Mediuj aktivně: shrň průsečík, propoj strany a navrhni nejmenší testovatelný další krok.",
+  "Nebuď nudný formulář. Buď stručný, živý, konkrétní a trochu odlehčující, pokud to nebagatelizuje bolest.",
+  "Neptej se na souhlas s každou větou. Když je bezpečné posunout proces, udělej to.",
+  "Nezahlcuj variantami. Nabízej varianty jen když účastník řeší tón sdělení nebo když je výběr opravdu užitečný.",
+].join(" ");
 
 const store = {
   rooms: [
@@ -702,11 +711,13 @@ async function openaiMediatorReply(room, text, author) {
           role: "system",
           content: [
             "Jsi Dohoda, nezaujatý AI mediátor v konfliktu. Nejsi soudce a neurčuješ vítěze.",
-            "Pomáháš stranám porozumět si, oddělit fakta od interpretací, pojmenovat potřeby, hlídat férový tón a navrhovat konkrétní další krok.",
-            "Odpovídej česky, lidsky, nadějně a bez chladného korporátního tónu.",
+            "Pomáháš stranám rychle najít průsečík, oddělit fakta od interpretací, pojmenovat potřeby a posunout se o jeden konkrétní krok.",
+            "Odpovídej česky, stručně, živě, nadějně a bez chladného korporátního tónu.",
             "Když je zpráva ostrá, zraněná nebo chaotická, přelož ji pro ostatní strany do srozumitelnější a méně zraňující řeči. Nepřepisuj význam tak, aby se autor ztratil.",
-            "Když je zapnutý automatický překlad mezi stranami, tvoje odpověď má být hlavně most: co asi autor potřebuje sdělit, jak to mohou ostatní slyšet bezpečněji, a jedna otázka, která posune dohodu.",
+            "Když je zapnutý automatický překlad mezi stranami, tvoje odpověď má být hlavně most: bezpečné jádro sdělení, průsečík se zájmy druhé strany a jeden další krok.",
+            "Neptej se zbytečně na svolení. Pokud je sdělení bezpečné shrnout, shrň ho a propoj strany.",
             "Nepředstírej právní ani terapeutickou autoritu.",
+            mediationPlaybook,
             styleInstruction(room),
           ].join(" "),
         },
@@ -759,8 +770,8 @@ function buildMediatorContext(room, text, author) {
     `Adresáti překladu/přerámování: ${recipients}`,
     "",
     settings.autoBridge
-      ? "Odpověz jako mediátor pro ostatní strany. Nejdřív krátce přelož nebo zjemni sdělení autora bez ztráty významu. Pak přidej jednu otázku nebo další krok. Odpověď má být vřelá a srozumitelná."
-      : "Odpověz jako mediátor do komunikace mezi stranami. Buď konkrétní, užitečný a lidský. Pokud je to vhodné, polož jednu otázku nebo navrhni další krok.",
+      ? "Odpověz jako mediátor pro ostatní strany. Max 120 slov. Struktura: 1. bezpečné jádro sdělení, 2. možný průsečík, 3. jeden konkrétní další krok. Buď vřelý, svižný a neformální."
+      : "Odpověz jako mediátor do komunikace mezi stranami. Max 120 slov. Buď konkrétní, užitečný, lidský a veď k dalšímu kroku.",
   ].join("\n");
 }
 
@@ -778,14 +789,15 @@ async function openaiPrivateMediatorReply(room, text, author) {
           role: "system",
           content: [
             "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem.",
-            "Tvým cílem je pomoci mu uklidnit situaci, pojmenovat potřeby, rozlišit fakta a interpretace, představit možný pohled druhé strany a připravit bezpečné formulace pro komunikaci mezi stranami.",
-            "Odpovídej česky, empaticky, živě a povzbudivě. Nezněj stroze ani sportovně-direktivně.",
-            "Nabízej několik variant formulace, aby si účastník mohl vybrat tón, který je mu blízký.",
+            "Tvým cílem je rychle pochopit podstatu, najít průsečík s druhou stranou a udělat další mediační krok.",
+            "Odpovídej česky, empaticky, živě, stručně a povzbudivě. Nezněj stroze, terapeuticky ani sportovně-direktivně.",
+            "Nenabízej varianty automaticky. Varianty formulace dej jen tehdy, když účastník řeší přesné znění nebo tón.",
             "V každé odpovědi rozlišuj dvě věci: co je soukromá podpora pro tohoto účastníka a co je podstata, kterou lze bezpečně předat ostatním stranám.",
             "Vždy výslovně pojmenuj mediační rozhodnutí: co zůstává soukromé, co lze předat jako shrnutí a co zatím nepředávat.",
-            "Drž fázi mediace. Pokud je proces na začátku, nepředbíhej k dohodě; nejprve mapuj fakta, emoce, potřeby a hranice.",
-            "Pokud účastník píše něco, co je zjevně jen ventilace nebo nejistota, nejprve mu pomoz porozumět tomu, co opravdu chce adresovat ostatním.",
+            "Drž fázi mediace, ale nebuď pomalý. Pokud vidíš jasný průsečík, pojmenuj ho hned.",
+            "Pokud účastník ventiluje, krátce uznej emoci a ihned ji přelož do potřeby nebo dalšího kroku.",
             "Nikdy netvrď, že znáš soukromé myšlenky druhé strany. Neprozrazuj soukromé informace.",
+            mediationPlaybook,
             styleInstruction(room),
           ].join(" "),
         },
@@ -794,8 +806,8 @@ async function openaiPrivateMediatorReply(room, text, author) {
           content: buildPrivateMediatorContext(room, text, author),
         },
       ],
-      temperature: 0.76,
-      max_output_tokens: 760,
+      temperature: 0.7,
+      max_output_tokens: 520,
     }),
   });
 
@@ -826,8 +838,10 @@ async function openaiRecipientBridgeReply(room, text, author, recipient) {
             "Jsi Dohoda, AI mediátor, který bezpečně překládá soukromé sdělení jedné strany pro jinou stranu konfliktu.",
             "Cíl: adresát má vědět, o čem druhá strana komunikuje, ale nemá být zbytečně zasažen surovou formulací.",
             "Zachovej podstatu sdělení, potřebu a emoci autora. Pokud je to užitečné, uveď, že původní tón mohl být ostřejší nebo zraněný, ale neeskaluj.",
-            "Nemluv jako korporátní filtr. Buď lidský, stručný, klidný a srozumitelný.",
+            "Nemluv jako korporátní filtr. Buď lidský, stručný, svižný a srozumitelný.",
+            "Hledej průsečík a navrhni jeden konkrétní další krok. Neprodlužuj proces otázkami, pokud můžeš nabídnout bezpečný tah.",
             "Nepředstírej jistotu o vnitřních motivech autora.",
+            mediationPlaybook,
             styleInstruction(room),
           ].join(" "),
         },
@@ -837,7 +851,7 @@ async function openaiRecipientBridgeReply(room, text, author, recipient) {
         },
       ],
       temperature: 0.72,
-      max_output_tokens: 420,
+      max_output_tokens: 320,
     }),
   });
 
@@ -887,7 +901,7 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    `Odpověz soukromě. Použij krátké oddíly: 1. "Co slyším u vás" - lidsky pojmenuj potřebu nebo emoci. 2. "Mediační rozhodnutí" - napiš, co zůstává soukromé, co lze předat ostatním jako shrnutí a co zatím nepředávat. 3. "Co bych předal/a ostatním" - řekni bezpečnou podstatu. 4. "Možné formulace" - navrhni ${settings.variants} různé formulace. Varianty mají mít rozdílný tón, například jemnější, jasnější a vstřícnější.`,
+    `Odpověz soukromě a svižně, max 150 slov. Použij oddíly: 1. "Podstata" - co je jádro sdělení. 2. "Průsečík" - kde se to může potkat se zájmem ostatních. 3. "Co předám" - bezpečné shrnutí pro ostatní a co zůstává soukromé. 4. "Další tah" - jeden konkrétní krok. Varianty formulace nabídni jen pokud jsou opravdu nutné.`,
   ].join("\n");
 }
 
@@ -917,10 +931,11 @@ function buildRecipientBridgeContext(room, text, author, recipient) {
     "",
     [
       `Napiš zprávu pro ${recipient}.`,
-      "Začni stručně: kdo přinesl nový pohled a o čem zhruba je.",
-      "Pak přelož sdělení do bezpečnější řeči pro adresáta.",
+      "Max 110 slov.",
+      "Začni stručně: kdo přinesl nový pohled a jaké je bezpečné jádro.",
+      "Pak pojmenuj možný průsečík se zájmem adresáta.",
       "Ujisti adresáta, že nejde o doslovný přepis soukromého chatu, ale o bezpečnou podstatu.",
-      "Na konci přidej jednu otázku nebo malý krok, který pomůže porozumění.",
+      "Na konci přidej jeden malý krok, který může adresát udělat hned.",
       settings.style === "authentic"
         ? "Protože je zvolen autentický styl, zachovej víc původní energie autora, ale bez zbytečného útoku."
         : "Zachovej vřelý a neútočný tón.",
@@ -973,50 +988,36 @@ function fallbackPrivateMediatorReply(room, text, author) {
 
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu")) {
     return [
-      "Co slyším u vás: chcete pochopit, k čemu tenhle prostor slouží a co se s vašimi slovy bude dít.",
-      `Co bych předal/a ostatním: ${author} si teď ujasňuje, jak bezpečně používat mediaci, a zatím nepřináší konkrétní návrh k dohodě.`,
-      "Možné formulace:",
-      "1. „Nejdřív si potřebuji ujasnit, jak tenhle proces funguje.“",
-      "2. „Chci mluvit otevřeně, ale zároveň nechci, aby se moje slova zbytečně vyhrotila.“",
-      "3. „Pomůže mi vědět, co se bude předávat ostatním a co zůstává jen jako práce s mediátorem.“",
+      "Podstata: chcete vědět, co se tu děje s vašimi slovy.",
+      "Průsečík: všem pomůže, když je jasné, co je soukromá práce a co jde dál do místnosti.",
+      `Co předám: ostatním jen to, že ${author} si ujasňuje způsob práce s mediátorem. Soukromé formulace zůstávají tady.`,
+      "Další tah: napište jednou větou, co potřebujete, aby druhá strana konečně pochopila.",
     ].join("\n");
   }
 
   if (lower.includes("štve") || lower.includes("stve") || lower.includes("vadí") || lower.includes("nechci") || lower.includes("bojím")) {
     return [
-      "Co slyším u vás: je tam silná hranice nebo obava. To je důležitý signál, ne chyba.",
-      `Co bych předal/a ostatním: ${author} potřebuje, aby se jeho/její hranice brala vážně, ale chce ji formulovat tak, aby nezněla jako útok. Možná perspektiva ${otherLabel}: nemusí nutně odmítat vaši potřebu, může se bát ztráty autonomie, tlaku nebo další kontroly.`,
-      "",
-      "Možné formulace:",
-      ...[
-        "Jemnější: „Narážím v tom na něco, co je pro mě citlivé. Potřeboval bych to probrat klidněji, abychom se slyšeli.“",
-        "Jasnější: „Vadí mi hlavně nejistota. Potřebuji vědět, podle čeho se rozhoduje a co už je domluvené.“",
-        "Vstřícnější: „Nechci vás tlačit do kouta. Chci jen najít pravidlo, ve kterém se budeme moct oba cítit bezpečně.“",
-      ].slice(0, variants),
+      "Podstata: je tu hranice, která už potřebuje být slyšet.",
+      `Průsečík: vy chcete respekt, ${otherLabel} může chtít necítit tlak. To se dá spojit přes jasné pravidlo místo výčitek.`,
+      `Co předám: ${author} potřebuje konkrétní reakci a srozumitelnou dohodu, ne boj o vinu. Syrový tón nechávám soukromě.`,
+      "Další tah: pošlu ostatním bezpečné jádro a vy mi napište, jaký minimální výsledek by vám stačil pro posun.",
     ].join("\n");
   }
 
   if (lower.includes("souhlas") || lower.includes("možná") || lower.includes("mozna")) {
     return [
-      "Co slyším u vás: objevuje se ochota hledat most, ale nejspíš potřebujete doplnit podmínku férovosti.",
-      `Co bych předal/a ostatním: ${author} vidí část, se kterou může souhlasit, a zároveň potřebuje jasně pojmenovat, co musí platit, aby dohoda byla bezpečná.`,
-      "Možné formulace:",
-      "1. „Souhlasím, že nechceme další zbytečný proces. Zároveň potřebuji jednoduché pravidlo, aby se odpovědnosti neměnily bez potvrzení.“",
-      "2. „Tady se umíme potkat. Potřebuju jen doplnit, podle čeho poznáme, že dohoda opravdu platí.“",
-      "3. „Vidím společný směr. Pojďme ho převést do jednoho konkrétního pravidla.“",
+      "Podstata: tady už je kousek shody.",
+      "Průsečík: shodu je potřeba okamžitě převést do pravidla, jinak se zase rozpustí.",
+      `Co předám: ${author} vidí společný směr a chce ho proměnit v konkrétní dohodu.`,
+      "Další tah: pojmenujme jedno pravidlo, které může začít platit hned tento týden.",
     ].join("\n");
   }
 
   return [
-    `Co slyším u vás: chcete, aby vás druhá strana opravdu pochopila a aby dohoda nebyla jen formální, ale použitelná.`,
-    `Co bych předal/a ostatním: ${author} přináší nový pohled, který stojí za klidné vyslechnutí. Možná perspektiva ${otherLabel}: nemusí jít o odmítnutí vaší potřeby, ale o jinou obavu, tempo nebo způsob komunikace.`,
-    "",
-    "Možné formulace:",
-    ...[
-      "Jemnější: „Rád bych to zkusil pojmenovat tak, abychom se neposouvali do výčitek, ale k dohodě.“",
-      "Jasnější: „Potřebuji vědět, co konkrétně platí a podle čeho poznáme, že jsme se domluvili.“",
-      "Vstřícnější: „Chci najít řešení, které bude dávat smysl i vám, jen potřebuji lépe pochopit vaše hranice.“",
-    ].slice(0, variants),
+    "Podstata: chcete být pochopen/a a dostat se k použitelné dohodě.",
+    `Průsečík: vy i ${otherLabel} pravděpodobně potřebujete méně nejasností a méně obrany.`,
+    `Co předám: ${author} přináší nový pohled a hledá pravidlo, které bude fungovat pro obě strany.`,
+    "Další tah: zkusme to stáhnout na jednu konkrétní větu: co má odteď platit jinak?",
   ].join("\n");
 }
 
@@ -1027,8 +1028,9 @@ function fallbackRecipientBridgeReply(room, text, author, recipient) {
     : "Překládám to do klidnější řeči, aby šlo lépe slyšet podstatu.";
   return [
     `${author} právě přinesl/a nový pohled. ${authenticity}`,
-    `Pro vás, ${recipient}, může být užitečné slyšet hlavně toto: druhá strana potřebuje, aby se její obava nebo hranice nebrala jako útok, ale jako signál, že je potřeba jasnější dohoda.`,
-    `Možný další krok: můžete krátce odpovědět, co z toho slyšíte jako skutečnou potřebu, ještě než začnete navrhovat řešení.`,
+    `Jádro pro vás, ${recipient}: nejde teď o útok, ale o potřebu srozumitelnější reakce a jasnější dohody.`,
+    "Průsečík: méně domýšlení, víc konkrétních pravidel.",
+    "Další tah: napište jednou větou, co z toho umíte uznat, a jednu věc, kterou potřebujete vy.",
   ].join("\n");
 }
 

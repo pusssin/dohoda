@@ -2737,3 +2737,83 @@ body {
     padding: 0 10px;
   }
 }
+
+/* Unified cool compromise palette */
+:root {
+  --amber: #5d83d7;
+  --amber-soft: rgba(93, 131, 215, 0.13);
+  --future-accent: #5d83d7;
+  --future-accent-2: #69c8bd;
+  --blue: #4d6f9d;
+  --blue-soft: rgba(93, 131, 215, 0.12);
+  --body-bg:
+    linear-gradient(180deg, rgba(252, 253, 254, 0.98), rgba(235, 241, 244, 0.96)),
+    linear-gradient(120deg, rgba(93, 131, 215, 0.1), transparent 44%, rgba(105, 200, 189, 0.11));
+  --vision-bg: var(--body-bg);
+}
+
+:root[data-theme="dark"] {
+  --amber: #9bbcff;
+  --amber-soft: rgba(155, 188, 255, 0.13);
+  --future-accent: #9bbcff;
+  --future-accent-2: #8ce5d6;
+  --blue: #9bbcff;
+  --blue-soft: rgba(155, 188, 255, 0.13);
+  --body-bg:
+    linear-gradient(180deg, rgba(5, 7, 10, 0.98), rgba(13, 17, 22, 0.97)),
+    linear-gradient(120deg, rgba(155, 188, 255, 0.12), transparent 44%, rgba(140, 229, 214, 0.1));
+  --vision-bg: var(--body-bg);
+}
+
+.chip.amber {
+  background: color-mix(in srgb, var(--blue-soft) 76%, var(--vision-glass-strong));
+  color: var(--blue);
+}
+
+.meter-track {
+  background: color-mix(in srgb, var(--vision-glass-soft) 70%, transparent);
+}
+
+.meter-track span {
+  background: linear-gradient(90deg, #c4535a 0%, #5d83d7 52%, #4e977c 100%);
+}
+
+.handshake-logo {
+  color: var(--future-accent);
+}
+
+.handshake-logo svg {
+  width: 27px;
+  height: 27px;
+  display: block;
+  overflow: visible;
+}
+
+.handshake-logo path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.entry-title .handshake-logo svg {
+  width: 36px;
+  height: 36px;
+}
+
+.brand .handshake-logo {
+  color: var(--future-accent-2);
+}
+
+.room-hero {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--future-accent) 7%, transparent), transparent 52%),
+    var(--vision-glass);
+}
+
+.primary-chat {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--future-accent) 5%, transparent), transparent 260px),
+    var(--vision-glass);
+}
