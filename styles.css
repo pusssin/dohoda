@@ -3276,28 +3276,62 @@ form.private-main-composer .send-arrow,
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border: 1px solid color-mix(in srgb, var(--speaker, var(--line)) 28%, var(--line));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--vision-glass-strong) 46%, transparent);
-  color: color-mix(in srgb, var(--speaker, var(--ink)) 62%, var(--ink));
-  font-size: 0.84rem;
-  font-weight: 900;
+  background: color-mix(in srgb, var(--vision-glass-strong) 24%, transparent);
+  color: color-mix(in srgb, var(--speaker, var(--ink)) 42%, var(--muted));
+  font-size: 0.66rem;
+  font-weight: 760;
   line-height: 1;
   cursor: pointer;
+  opacity: 0.78;
 }
 
 .message-collapse-btn:hover {
   border-color: color-mix(in srgb, var(--speaker, var(--future-accent)) 58%, var(--line));
+  opacity: 1;
 }
 
 .message.collapsed {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.24) inset,
+    0 8px 20px color-mix(in srgb, var(--speaker, transparent) 4%, transparent);
+}
+
+.message.collapsed::before {
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+}
+
+.message.collapsed .message-head {
+  display: contents;
+}
+
+.message.collapsed strong {
+  grid-column: 1;
+  margin-bottom: 0;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.message.collapsed .message-collapse-btn {
+  grid-column: 3;
+  width: 16px;
+  height: 16px;
+  font-size: 0.6rem;
 }
 
 .message.collapsed p {
+  grid-column: 2;
   display: block;
   max-width: 100%;
   margin: 0;
