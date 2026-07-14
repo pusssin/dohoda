@@ -3859,6 +3859,12 @@ form.private-main-composer .voice-input-btn {
     0 0 28px color-mix(in srgb, #e32636 48%, transparent);
 }
 
+.voice-input-btn:disabled {
+  opacity: 0.58;
+  cursor: wait;
+  animation: none;
+}
+
 @keyframes recordPulse {
   0%,
   100% {

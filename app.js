@@ -18,6 +18,9 @@ const state = {
   voiceAutoRead: localStorage.getItem("dohoda.voiceAutoRead") === "1",
   voiceListening: false,
   speechRecognition: null,
+  mediaRecorder: null,
+  voiceChunks: [],
+  voiceStream: null,
   theme: localStorage.getItem("dohoda.theme") || "light",
   online: false,
   aiConfigured: false,
@@ -1477,59 +1480,108 @@ function rgb(parts) {
   return `rgb(${parts[0]}, ${parts[1]}, ${parts[2]})`;
 }
 
-function speechRecognitionConstructor() {
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-}
-
-function startVoiceInput(textarea, button) {
-  const Recognition = speechRecognitionConstructor();
-  if (!Recognition) {
-    addToast("Diktování tento prohlížeč nepodporuje. Zkuste Chrome.");
-    return;
-  }
-  if (state.speechRecognition && state.voiceListening) {
-    state.speechRecognition.stop();
+async function startVoiceInput(textarea, button) {
+  if (state.mediaRecorder && state.voiceListening) {
+    state.mediaRecorder.stop();
     return;
   }
 
-  const recognition = new Recognition();
-  state.speechRecognition = recognition;
-  recognition.lang = "cs-CZ";
-  recognition.interimResults = true;
-  recognition.continuous = false;
-  const originalValue = textarea.value.trim();
-  let finalTranscript = "";
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    addToast("Nahrávání mikrofonu tento prohlížeč nepodporuje.");
+    return;
+  }
 
-  button.classList.add("is-listening");
-  button.textContent = "";
-  state.voiceListening = true;
-  addToast("Poslouchám...");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    state.mediaRecorder = recorder;
+    state.voiceStream = stream;
+    state.voiceChunks = [];
+    state.voiceListening = true;
+    button.classList.add("is-listening");
+    button.disabled = false;
+    addToast("Nahrávám... kliknutím zastavíte.");
 
-  recognition.onresult = (event) => {
-    let interimTranscript = "";
-    finalTranscript = "";
-    for (let index = 0; index < event.results.length; index += 1) {
-      const transcript = event.results[index][0]?.transcript || "";
-      if (event.results[index].isFinal) finalTranscript += transcript;
-      else interimTranscript += transcript;
-    }
-    const pieces = [originalValue, finalTranscript.trim(), interimTranscript.trim()].filter(Boolean);
-    textarea.value = pieces.join(originalValue ? " " : "");
-    textarea.focus();
-  };
+    recorder.ondataavailable = (event) => {
+      if (event.data?.size) state.voiceChunks.push(event.data);
+    };
 
-  recognition.onerror = () => {
-    addToast("Diktování se nepovedlo.");
-  };
+    recorder.onerror = () => {
+      stopVoiceStream();
+      button.classList.remove("is-listening");
+      state.voiceListening = false;
+      addToast("Nahrávání se nepovedlo.");
+    };
 
-  recognition.onend = () => {
+    recorder.onstop = async () => {
+      const blob = new Blob(state.voiceChunks, { type: recorder.mimeType || "audio/webm" });
+      stopVoiceStream();
+      state.mediaRecorder = null;
+      state.voiceListening = false;
+      button.classList.remove("is-listening");
+      if (!blob.size) {
+        addToast("Nahrávka je prázdná.");
+        return;
+      }
+      if (blob.size > maxSourceBytes) {
+        addToast("Nahrávka je větší než 50 MB.");
+        return;
+      }
+      button.disabled = true;
+      addToast("Přepisuji nahrávku...");
+      try {
+        const dataUrl = await blobToDataUrl(blob);
+        const response = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dataUrl,
+            mime: blob.type || "audio/webm",
+            size: blob.size,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Přepis se nepovedl.");
+        const transcript = String(data.text || "").trim();
+        if (!transcript) {
+          addToast("V nahrávce jsem nerozpoznal text.");
+          return;
+        }
+        textarea.value = [textarea.value.trim(), transcript].filter(Boolean).join(textarea.value.trim() ? " " : "");
+        textarea.focus();
+        addToast("Přepis vložen do zprávy");
+      } catch (error) {
+        addToast(error.message || "Přepis se nepovedl.");
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    recorder.start();
+  } catch (error) {
     state.voiceListening = false;
     button.classList.remove("is-listening");
-    button.textContent = "";
-    textarea.focus();
-  };
+    addToast(error.name === "NotAllowedError" ? "Povolte prosím mikrofon v prohlížeči." : "Mikrofon se nepovedlo spustit.");
+  }
+}
 
-  recognition.start();
+function stopVoiceStream() {
+  state.voiceStream?.getTracks?.().forEach((track) => track.stop());
+  state.voiceStream = null;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Nahrávku se nepovedlo přečíst."));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function speakText(text) {

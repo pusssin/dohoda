@@ -239,6 +239,22 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/transcribe") {
+    if (!openaiApiKey) {
+      sendJson(res, 400, { error: "Přepis audia vyžaduje OpenAI API klíč." });
+      return;
+    }
+    const body = await readJson(req);
+    const size = Number(body.size || 0);
+    if (size > maxSourceBytes) {
+      sendJson(res, 413, { error: "Nahrávka je větší než 50 MB." });
+      return;
+    }
+    const text = await transcribeAudioDataUrl(String(body.dataUrl || ""), "voice-message.webm");
+    sendJson(res, 200, { text });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/rooms") {
     const body = await readJson(req);
     const author = currentUser.name;
@@ -1045,14 +1061,18 @@ function sanitizeSource(body) {
 }
 
 async function transcribeAudioSource(source) {
-  const match = String(source.dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
+  return transcribeAudioDataUrl(source.dataUrl, source.fileName || "audio.webm");
+}
+
+async function transcribeAudioDataUrl(dataUrl, fileName = "audio.webm") {
+  const match = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
   if (!match) throw new Error("Audio nemá platný obsah.");
-  const mime = match[1] || source.mime || "audio/mpeg";
+  const mime = match[1] || "audio/webm";
   const buffer = Buffer.from(match[2], "base64");
   if (buffer.length > maxSourceBytes) throw new Error("Audio je větší než 50 MB.");
   const form = new FormData();
   const blob = new Blob([buffer], { type: mime });
-  form.append("file", blob, source.fileName || "audio.webm");
+  form.append("file", blob, fileName);
   form.append("model", "gpt-4o-mini-transcribe");
   form.append("language", "cs");
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
