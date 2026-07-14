@@ -4147,10 +4147,17 @@ form.private-main-composer .send-arrow,
 }
 
 .quiet-profile {
+  margin-top: 28px;
   background:
     radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--future-accent) 8%, transparent), transparent 34rem),
     radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--future-accent-2) 7%, transparent), transparent 30rem),
     color-mix(in srgb, var(--vision-glass-strong) 50%, transparent);
+}
+
+@media (max-width: 680px) {
+  .quiet-profile {
+    margin-top: 16px;
+  }
 }
 
 :root:not([data-theme="dark"]) .quiet-profile {
