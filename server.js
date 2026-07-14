@@ -18,6 +18,8 @@ const defaultMediationSettings = {
   autoBridge: true,
   adaptToRecipient: true,
   variants: 3,
+  crazyMode: false,
+  initiatorMode: false,
 };
 
 const styleInstructions = {
@@ -31,10 +33,6 @@ const styleInstructions = {
     "Tón je přímý, energický a ne tvrdý. Nečekej zbytečně na svolení, když můžeš bezpečně posunout proces.",
   authentic:
     "Tón zachovává autenticitu autora. Nevyhlazuj sdělení do sterilní fráze; jen odstraň útoky, které brání porozumění.",
-  crazy:
-    "Tón je hravý, vtipný a nečekaný, ale nikdy nezlehčuje bolest ani konflikt. Použij humor jen jako uvolnění napětí a vždy skonči praktickým krokem.",
-  initiator:
-    "Tón je aktivující a energický. Vymýšlej malé způsoby, jak zapojit pasivní strany, získat je pro proces a rychle je dovést k interakci.",
 };
 
 const mediationPlaybook = [
@@ -43,7 +41,7 @@ const mediationPlaybook = [
   "Mediuj aktivně: shrň společný bod, propoj strany a navrhni nejmenší testovatelný další krok.",
   "Nebuď nudný formulář. Buď stručný, živý, konkrétní a trochu odlehčující, pokud to nebagatelizuje bolest.",
   "Neptej se na souhlas s každou větou. Když je bezpečné posunout proces, udělej to.",
-  "Nezahlcuj variantami. Nabízej varianty jen když účastník řeší tón sdělení nebo když je výběr opravdu užitečný.",
+  "Buď stručný a o důležitých krocích informuj. Nezahlcuj variantami. Nabízej varianty jen když účastník řeší tón sdělení nebo když je výběr opravdu užitečný.",
 ].join(" ");
 
 const store = {
@@ -545,7 +543,7 @@ function publicRoomFor(room, viewer = "") {
 }
 
 function sanitizeMediationSettings(settings) {
-  const style = ["warm", "calm", "clear", "direct", "authentic", "crazy", "initiator"].includes(settings.style)
+  const style = ["warm", "calm", "clear", "direct", "authentic"].includes(settings.style)
     ? settings.style
     : defaultMediationSettings.style;
   const variants = Math.max(0, Math.min(3, Number(settings.variants ?? defaultMediationSettings.variants)));
@@ -554,6 +552,8 @@ function sanitizeMediationSettings(settings) {
     autoBridge: settings.autoBridge !== false,
     adaptToRecipient: settings.adaptToRecipient !== false,
     variants,
+    crazyMode: settings.crazyMode === true,
+    initiatorMode: settings.initiatorMode === true,
   };
 }
 
@@ -759,6 +759,8 @@ function buildMediatorContext(room, text, author) {
     `Typ konfliktu: ${room.type}`,
     `Účastníci: ${room.participants.join(", ")}`,
     `Styl mediace: ${settings.style}`,
+    `Crazy režim: ${settings.crazyMode ? "ano" : "ne"}`,
+    `Iniciátor režim: ${settings.initiatorMode ? "ano" : "ne"}`,
     `Automatický překlad mezi stranami: ${settings.autoBridge ? "ano" : "ne"}`,
     `Přizpůsobovat tón adresátům: ${settings.adaptToRecipient ? "ano" : "ne"}`,
     "",
@@ -888,6 +890,8 @@ function buildPrivateMediatorContext(room, text, author) {
     `Aktuální účastník: ${author}`,
     `Ostatní účastníci: ${otherParticipants}`,
     `Styl mediace: ${settings.style}`,
+    `Crazy režim: ${settings.crazyMode ? "ano" : "ne"}`,
+    `Iniciátor režim: ${settings.initiatorMode ? "ano" : "ne"}`,
     `Počet navržených formulací: ${settings.variants}`,
     `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
     `Fáze mediace: ${room.stage || "Vstupní mapování"}`,
@@ -905,7 +909,7 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    `Odpověz soukromě a svižně, max ${settings.variants > 0 ? 220 : 150} slov. Použij oddíly: 1. "Podstata" - co je jádro sdělení. 2. "Spojka" - kde se to může potkat se zájmem ostatních. 3. "Co předám" - bezpečné shrnutí pro ostatní a co zůstává soukromé. 4. "Další tah" - jeden konkrétní krok. ${settings.variants > 0 ? `Na konec přidej blok "Návrhy formulace:" a přesně ${settings.variants} očíslované varianty vět, které může účastník rovnou poslat.` : "Nepřidávej samostatné návrhy formulace."}`,
+    `Odpověz soukromě a svižně, max ${settings.variants > 0 ? 220 : 150} slov. Použij oddíly: 1. "Podstata" - co je jádro sdělení. 2. "Spojka" - kde se to může potkat se zájmem ostatních. 3. "Co předám" - bezpečné shrnutí pro ostatní a co zůstává soukromé. 4. "Další tah" - jeden konkrétní krok. ${settings.initiatorMode ? "Jako Iniciátor přidej jeden malý aktivující tah, který získá ostatní k účasti nebo otevře společné téma." : ""} ${settings.crazyMode ? "Jako Crazy režim můžeš použít krátký vtipný obrat pro získání pozornosti, ale bez zesměšnění lidí nebo bolesti." : ""} ${settings.crazyMode && settings.initiatorMode ? "Když jsou zapnuté oba režimy, hlavní cíl je získat pozornost a hned ji převést do spoluúčasti na shodě." : ""} ${settings.variants > 0 ? `Na konec přidej blok "Návrhy formulace:" a přesně ${settings.variants} očíslované varianty vět, které může účastník rovnou poslat.` : "Nepřidávej samostatné návrhy formulace."}`,
   ].join("\n");
 }
 
@@ -921,6 +925,8 @@ function buildRecipientBridgeContext(room, text, author, recipient) {
     `Autor původního sdělení: ${author}`,
     `Adresát přerámování: ${recipient}`,
     `Styl mediace: ${settings.style}`,
+    `Crazy režim: ${settings.crazyMode ? "ano" : "ne"}`,
+    `Iniciátor režim: ${settings.initiatorMode ? "ano" : "ne"}`,
     `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
     "",
     "Mapa konfliktu:",
@@ -949,7 +955,17 @@ function buildRecipientBridgeContext(room, text, author, recipient) {
 
 function styleInstruction(room) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
-  return styleInstructions[settings.style] || styleInstructions.warm;
+  const parts = [styleInstructions[settings.style] || styleInstructions.warm];
+  if (settings.initiatorMode) {
+    parts.push("Režim Iniciátor: stručně navrhuj témata, mikrokroky a nenucené způsoby, jak zapojit ostatní do interakce, shody, kompromisu nebo dohody. Cílem je získat lidi pro proces, ne je tlačit.");
+  }
+  if (settings.crazyMode) {
+    parts.push("Režim Crazy: snaž se získat pozornost lehkým humorem, překvapivou formulací nebo malým odlehčením. Humor nesmí nikoho shazovat, zlehčovat bolest ani rušit cíl dohody.");
+  }
+  if (settings.crazyMode && settings.initiatorMode) {
+    parts.push("Kombinace Crazy + Iniciátor je nejsilnější režim: upoutej pozornost, krátce odlehči atmosféru a okamžitě ji převeď do konkrétní společné aktivity.");
+  }
+  return parts.join(" ");
 }
 
 function extractResponseText(data) {
@@ -1042,9 +1058,19 @@ function fallbackPrivateMediatorReply(room, text, author) {
 
 function withDraftVariants(settings, bodyLines, drafts) {
   const count = Math.max(0, Math.min(3, Number(settings.variants || 0)));
-  if (!count) return bodyLines.join("\n");
+  const tunedLines = [...bodyLines];
+  if (settings.crazyMode) {
+    tunedLines.splice(1, 0, "Odlehčení: zkusme z toho nedělat soudní síň, ale krátký servisní pit-stop pro dohodu.");
+  }
+  if (settings.initiatorMode) {
+    tunedLines.push("Aktivace: navrhněte ostatním jednu otázku, na kterou jde odpovědět do 30 sekund.");
+  }
+  if (settings.crazyMode && settings.initiatorMode) {
+    tunedLines.push("Tah na pozornost: začněte jednou nečekaně lehkou větou a hned ji převeďte do konkrétní prosby.");
+  }
+  if (!count) return tunedLines.join("\n");
   return [
-    ...bodyLines,
+    ...tunedLines,
     "",
     "Návrhy formulace:",
     ...drafts.slice(0, count).map((draft, index) => `${index + 1}. ${draft}`),

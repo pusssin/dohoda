@@ -13,6 +13,7 @@ const state = {
   databaseConfigured: false,
   requestInProgress: false,
   advancedOpen: false,
+  experimentalOpen: false,
   inviteToken: new URLSearchParams(location.search).get("invite") || "",
   profiles: [
     {
@@ -453,7 +454,9 @@ function mediationSettings(room) {
     style: room.mediationSettings?.style || "warm",
     autoBridge: room.mediationSettings?.autoBridge !== false,
     adaptToRecipient: room.mediationSettings?.adaptToRecipient !== false,
-    variants: Number(room.mediationSettings?.variants || 3),
+    variants: Number(room.mediationSettings?.variants ?? 3),
+    crazyMode: room.mediationSettings?.crazyMode === true,
+    initiatorMode: room.mediationSettings?.initiatorMode === true,
   };
 }
 
@@ -461,7 +464,6 @@ function mediationSettingsPanel(room) {
   const settings = mediationSettings(room);
   const autoBridgeHelp = "Když někdo napíše zprávu, ostatním stranám ji mediátor podle potřeby předá v bezpečnější a srozumitelnější podobě.";
   const adaptHelp = "Mediátor zohlední, komu zpráva míří: jinak mluví s někým zraněným, jinak s někým rozčileným nebo věcným.";
-  const experimentalStyle = ["crazy", "initiator"].includes(settings.style) ? settings.style : "";
   return `
     <form id="mediationSettingsForm" class="mediation-settings">
       <div>
@@ -487,18 +489,19 @@ function mediationSettingsPanel(room) {
           <option value="3" ${settings.variants === 3 ? "selected" : ""}>3 varianty</option>
         </select>
       </label>
-      <details class="experimental-modes" ${experimentalStyle ? "open" : ""}>
+      <details id="experimentalModes" class="experimental-modes" ${state.experimentalOpen || settings.crazyMode || settings.initiatorMode ? "open" : ""}>
         <summary>Experimentální režimy</summary>
         <label class="toggle-line" title="Hravější tón pro uvolnění napětí. Nepoužívá se pro vážné nebo zranitelné situace.">
-          <input name="experimentalStyle" type="radio" value="crazy" ${experimentalStyle === "crazy" ? "checked" : ""} />
+          <input id="crazyMode" type="checkbox" ${settings.crazyMode ? "checked" : ""} />
           <span>Crazy</span>
           <span class="hint-dot" aria-label="Hravější tón pro odlehčení napětí.">?</span>
         </label>
         <label class="toggle-line" title="Aktivně vymýšlí malé kroky, jak zapojit ostatní a dostat je do interakce.">
-          <input name="experimentalStyle" type="radio" value="initiator" ${experimentalStyle === "initiator" ? "checked" : ""} />
+          <input id="initiatorMode" type="checkbox" ${settings.initiatorMode ? "checked" : ""} />
           <span>Iniciátor</span>
           <span class="hint-dot" aria-label="Aktivuje ostatní k účasti a dohodě.">?</span>
         </label>
+        <p class="meta">Nejsilnější testovací režim je Crazy + Iniciátor: nejdřív získat pozornost, pak ji převést do společné aktivity.</p>
       </details>
       <label class="toggle-line" title="${escapeHtml(autoBridgeHelp)}">
         <input id="autoBridge" type="checkbox" ${settings.autoBridge ? "checked" : ""} />
@@ -758,18 +761,20 @@ function bindRoomEvents(room, inviteUrl) {
 
   const settingsForm = document.getElementById("mediationSettingsForm");
   if (settingsForm) {
+    const experimentalModes = document.getElementById("experimentalModes");
+    if (experimentalModes) {
+      experimentalModes.addEventListener("toggle", () => {
+        state.experimentalOpen = experimentalModes.open;
+      });
+    }
     settingsForm.addEventListener("change", async (event) => {
-      if (event.target?.id === "mediationStyle") {
-        document.querySelectorAll('input[name="experimentalStyle"]').forEach((input) => {
-          input.checked = false;
-        });
-      }
-      const experimental = document.querySelector('input[name="experimentalStyle"]:checked');
       const payload = {
-        style: experimental?.value || document.getElementById("mediationStyle").value,
+        style: document.getElementById("mediationStyle").value,
         variants: Number(document.getElementById("mediationVariants").value),
         autoBridge: document.getElementById("autoBridge").checked,
         adaptToRecipient: document.getElementById("adaptToRecipient").checked,
+        crazyMode: document.getElementById("crazyMode").checked,
+        initiatorMode: document.getElementById("initiatorMode").checked,
       };
       room.mediationSettings = payload;
       try {
@@ -893,21 +898,11 @@ function topbar() {
 
 function logoMark() {
   return `
-    <span class="mark handshake-logo" aria-hidden="true">
+    <span class="mark linked-logo" aria-hidden="true">
       <svg viewBox="0 0 64 64" role="img">
-        <path class="palm left-palm" d="M7 37l10.5-10.5c3-3 7.7-3.2 10.9-.5l3.4 2.9" />
-        <path class="palm right-palm" d="M57 37L46.5 26.5c-3-3-7.7-3.2-10.9-.5L24.8 35.2c-1.7 1.5-.6 4.3 1.7 4.3h3.1c2.2 0 4.3-.8 5.9-2.3l3.1-2.9" />
-        <path class="finger left-f1" d="M16 27l-4.5-7.5" />
-        <path class="finger left-f2" d="M20.5 24.5l-3.2-8.5" />
-        <path class="finger left-f3" d="M25 24.8l-1.5-8.8" />
-        <path class="finger left-f4" d="M29.1 27l.3-7.8" />
-        <path class="finger right-f1" d="M48 27l4.5-7.5" />
-        <path class="finger right-f2" d="M43.5 24.5l3.2-8.5" />
-        <path class="finger right-f3" d="M39 24.8l1.5-8.8" />
-        <path class="finger right-f4" d="M34.9 27l-.3-7.8" />
-        <path class="shake" d="M33.8 39.5l6 5.7c2 1.9 5.1 1.9 7.1-.1l8.7-8.7" />
-        <path class="cuff-left" d="M5 39l8.2 8.2" />
-        <path class="cuff-right" d="M59 39l-8.2 8.2" />
+        <circle class="ring ring-left" cx="25" cy="32" r="15" />
+        <circle class="ring ring-right" cx="39" cy="32" r="15" />
+        <path class="link-core" d="M25 32h14" />
       </svg>
     </span>
   `;
