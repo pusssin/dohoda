@@ -4437,6 +4437,14 @@ h3,
   -webkit-backdrop-filter: blur(24px) saturate(1.25);
   transform: translateX(-50%);
   cursor: pointer;
+  opacity: 1;
+  transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease;
+}
+
+.scroll-composer-btn.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px);
 }
 
 :root:not([data-theme="dark"]) .scroll-composer-btn {

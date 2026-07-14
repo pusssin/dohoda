@@ -1270,10 +1270,17 @@ function bindRoomEvents(room, inviteUrl) {
 
   const scrollToComposer = document.getElementById("scrollToComposer");
   if (scrollToComposer && textarea) {
+    const updateScrollComposerVisibility = () => {
+      const remaining = document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+      scrollToComposer.classList.toggle("hidden", remaining < 90);
+    };
     scrollToComposer.addEventListener("click", () => {
       textarea.scrollIntoView({ behavior: "smooth", block: "center" });
       setTimeout(() => textarea.focus(), 360);
     });
+    window.addEventListener("scroll", updateScrollComposerVisibility, { passive: true });
+    window.addEventListener("resize", updateScrollComposerVisibility);
+    requestAnimationFrame(updateScrollComposerVisibility);
   }
 
   const summarize = document.getElementById("summarizeRoom");
