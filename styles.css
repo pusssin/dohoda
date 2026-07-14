@@ -3920,3 +3920,28 @@ form.private-main-composer .send-arrow,
   min-height: 5px;
   border-width: 1px;
 }
+
+/* Final override: tiny mediation toggle dots */
+.mediation-settings .compact-toggle {
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+}
+
+.mediation-settings .compact-toggle input[type="checkbox"] {
+  width: 8px !important;
+  min-width: 8px !important;
+  height: 8px !important;
+  min-height: 8px !important;
+  border-width: 1px !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.mediation-settings .compact-toggle input[type="checkbox"]:checked {
+  background: var(--future-accent-2) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.mediation-settings .compact-toggle:has(input[type="checkbox"]:checked) {
+  box-shadow: none;
+}
