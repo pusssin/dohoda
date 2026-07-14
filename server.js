@@ -25,7 +25,6 @@ const defaultMediationSettings = {
   autoBridge: true,
   adaptToRecipient: true,
   variants: 3,
-  crazyMode: false,
   initiatorMode: false,
 };
 
@@ -369,6 +368,7 @@ async function handleApi(req, res, url) {
       });
       await distributionPromise;
       addAuthorDistributionNotice(room, author);
+      addDiary(room, "AI mediátor", `Mediátor odpověděl účastníkovi ${author} a rozeslal ostatním bezpečné shrnutí podstaty.`, "mediator-response");
       updateMap(room, text);
       moveProgress(room, 5);
     }
@@ -398,6 +398,16 @@ async function handleApi(req, res, url) {
           activity: true,
           decision: "Iniciátor zahájil aktivní krok",
         });
+        for (const participant of room.participants.filter((name) => name && name !== author)) {
+          const targetConversation = ensurePrivateConversation(room, participant);
+          targetConversation.push({
+            author: "AI mediátor",
+            text: initiatorParticipantPrompt(room, author, participant),
+            ai: true,
+            activity: true,
+            decision: "Iniciátor zapojuje účastníky",
+          });
+        }
         addDiary(room, "AI mediátor", `${author} zapnul/a Iniciátora. Mediátor připravil první aktivující krok pro rozhýbání účastníků.`, "initiator");
       }
     }
@@ -990,7 +1000,6 @@ function sanitizeMediationSettings(settings) {
     autoBridge: settings.autoBridge !== false,
     adaptToRecipient: settings.adaptToRecipient !== false,
     variants,
-    crazyMode: settings.crazyMode === true,
     initiatorMode: settings.initiatorMode === true,
   };
 }
@@ -1438,9 +1447,9 @@ async function openaiMediatorReply(room, text, author) {
         content: buildMediatorContext(room, text, author),
       },
     ],
-    temperature: 0.72,
-    max_output_tokens: 420,
-  }, 12000);
+    temperature: 0.62,
+    max_output_tokens: 260,
+  }, 8000);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -1466,7 +1475,6 @@ function buildMediatorContext(room, text, author) {
     `Typ konfliktu: ${room.type}`,
     `Účastníci: ${room.participants.join(", ")}`,
     `Styl mediace: ${settings.style}`,
-    `Crazy režim: ${settings.crazyMode ? "ano" : "ne"}`,
     `Iniciátor režim: ${settings.initiatorMode ? "ano" : "ne"}`,
     `Automatický překlad mezi stranami: ${settings.autoBridge ? "ano" : "ne"}`,
     `Přizpůsobovat tón adresátům: ${settings.adaptToRecipient ? "ano" : "ne"}`,
@@ -1483,8 +1491,8 @@ function buildMediatorContext(room, text, author) {
     `Adresáti překladu/přerámování: ${recipients}`,
     "",
     settings.autoBridge
-      ? "Odpověz jako mediátor pro ostatní strany. Max 120 slov. Struktura: 1. bezpečné jádro sdělení, 2. možná spojka mezi stranami, 3. jeden konkrétní další krok. Buď vřelý, svižný a neformální."
-      : "Odpověz jako mediátor do komunikace mezi stranami. Max 120 slov. Buď konkrétní, užitečný, lidský a veď k dalšímu kroku.",
+      ? "Odpověz jako mediátor pro ostatní strany. Max 80 slov. Struktura: bezpečné jádro, spojka mezi stranami, jeden další krok. Buď svižný a lidský."
+      : "Odpověz jako mediátor do komunikace mezi stranami. Max 80 slov. Buď konkrétní, užitečný a veď k dalšímu kroku.",
   ].join("\n");
 }
 
@@ -1513,9 +1521,9 @@ async function openaiPrivateMediatorReply(room, text, author) {
         content: buildPrivateMediatorContext(room, text, author),
       },
     ],
-    temperature: 0.7,
-    max_output_tokens: 360,
-  }, 14000);
+    temperature: 0.62,
+    max_output_tokens: 260,
+  }, 8500);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -1550,9 +1558,9 @@ async function openaiRecipientBridgeReply(room, text, author, recipient) {
         content: buildRecipientBridgeContext(room, text, author, recipient),
       },
     ],
-    temperature: 0.72,
-    max_output_tokens: 220,
-  }, 7000);
+    temperature: 0.62,
+    max_output_tokens: 160,
+  }, 4500);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -1606,7 +1614,6 @@ function buildPrivateMediatorContext(room, text, author) {
     `Aktuální účastník: ${author}`,
     `Ostatní účastníci: ${otherParticipants}`,
     `Styl mediace: ${settings.style}`,
-    `Crazy režim: ${settings.crazyMode ? "ano" : "ne"}`,
     `Iniciátor režim: ${settings.initiatorMode ? "ano" : "ne"}`,
     `Počet navržených formulací: ${settings.variants}`,
     `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
@@ -1625,7 +1632,7 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    `Odpověz soukromě a svižně, max ${settings.variants > 0 ? 165 : 115} slov. Použij oddíly: 1. "Podstata" - jádro sdělení. 2. "Spojka" - kde se to může potkat se zájmem ostatních. 3. "Co předám" - bezpečné shrnutí pro ostatní a co zůstává soukromé. 4. "Další tah" - jeden konkrétní krok. ${settings.initiatorMode ? "Jako Iniciátor přidej jeden malý aktivující tah." : ""} ${settings.crazyMode ? "Jako Crazy režim můžeš použít krátký vtipný obrat, ale bez zesměšnění." : ""} ${settings.crazyMode && settings.initiatorMode ? "Když jsou zapnuté oba režimy, upoutej pozornost a hned ji převeď do společné aktivity." : ""} ${settings.variants > 0 ? `Na konec přidej blok "Návrhy formulace:" a přesně ${settings.variants} krátké očíslované varianty vět.` : "Nepřidávej samostatné návrhy formulace."}`,
+    `Odpověz soukromě a svižně, max ${settings.variants > 0 ? 125 : 90} slov. Použij oddíly: "Podstata", "Spojka", "Co předám", "Další tah". ${settings.initiatorMode ? "Jako Iniciátor přidej jednu krátkou otázku nebo mikrokrok, který zapojí ostatní." : ""} ${settings.variants > 0 ? `Na konec přidej blok "Návrhy formulace:" a přesně ${settings.variants} velmi krátké očíslované varianty vět.` : "Nepřidávej samostatné návrhy formulace."}`,
   ].join("\n");
 }
 
@@ -1641,7 +1648,6 @@ function buildRecipientBridgeContext(room, text, author, recipient) {
     `Autor původního sdělení: ${author}`,
     `Adresát přerámování: ${recipient}`,
     `Styl mediace: ${settings.style}`,
-    `Crazy režim: ${settings.crazyMode ? "ano" : "ne"}`,
     `Iniciátor režim: ${settings.initiatorMode ? "ano" : "ne"}`,
     `Přizpůsobovat tón adresátovi: ${settings.adaptToRecipient ? "ano" : "ne"}`,
     "",
@@ -1657,7 +1663,7 @@ function buildRecipientBridgeContext(room, text, author, recipient) {
     "",
     [
       `Napiš zprávu pro ${recipient}.`,
-      "Max 110 slov.",
+      "Max 70 slov.",
       "Začni stručně: kdo přinesl nový pohled a jaké je bezpečné jádro.",
       "Pak pojmenuj možnou spojku se zájmem adresáta.",
       "Ujisti adresáta, že nejde o doslovný přepis soukromého chatu, ale o bezpečnou podstatu.",
@@ -1673,13 +1679,7 @@ function styleInstruction(room) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const parts = [styleInstructions[settings.style] || styleInstructions.warm];
   if (settings.initiatorMode) {
-    parts.push("Režim Iniciátor: stručně navrhuj témata, mikrokroky a nenucené způsoby, jak zapojit ostatní do interakce, shody, kompromisu nebo dohody. Cílem je získat lidi pro proces, ne je tlačit.");
-  }
-  if (settings.crazyMode) {
-    parts.push("Režim Crazy: snaž se získat pozornost lehkým humorem, překvapivou formulací nebo malým odlehčením. Humor nesmí nikoho shazovat, zlehčovat bolest ani rušit cíl dohody.");
-  }
-  if (settings.crazyMode && settings.initiatorMode) {
-    parts.push("Kombinace Crazy + Iniciátor je nejsilnější režim: upoutej pozornost, krátce odlehči atmosféru a okamžitě ji převeď do konkrétní společné aktivity.");
+    parts.push("Režim Iniciátor: aktivně zapojuj účastníky. Navrhuj krátké otázky, mikrokroky a malé bezpečné výzvy. Cílem je rychle získat odpověď, společný bod nebo ověřitelný další krok.");
   }
   return parts.join(" ");
 }
@@ -1775,14 +1775,8 @@ function fallbackPrivateMediatorReply(room, text, author) {
 function withDraftVariants(settings, bodyLines, drafts) {
   const count = Math.max(0, Math.min(3, Number(settings.variants || 0)));
   const tunedLines = [...bodyLines];
-  if (settings.crazyMode) {
-    tunedLines.splice(1, 0, "Odlehčení: zkusme z toho nedělat soudní síň, ale krátký servisní pit-stop pro dohodu.");
-  }
   if (settings.initiatorMode) {
-    tunedLines.push("Aktivace: navrhněte ostatním jednu otázku, na kterou jde odpovědět do 30 sekund.");
-  }
-  if (settings.crazyMode && settings.initiatorMode) {
-    tunedLines.push("Tah na pozornost: začněte jednou nečekaně lehkou větou a hned ji převeďte do konkrétní prosby.");
+    tunedLines.push("Aktivace: pošlete ostatním jednu otázku, na kterou jde odpovědět do 30 sekund.");
   }
   if (!count) return tunedLines.join("\n");
   return [
@@ -1794,15 +1788,11 @@ function withDraftVariants(settings, bodyLines, drafts) {
 }
 
 function initiatorKickoff(room, author) {
-  const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const others = room.participants.filter((name) => name !== author);
   const targets = others.length ? others.join(", ") : "další účastníky";
-  const playful = settings.crazyMode
-    ? "Odlehčení: žádný dlouhý proslov, jen malý startér pozornosti."
-    : "Bez tlaku: stačí velmi malý vstup.";
   return [
     "Iniciátor zapnutý. Jdu to rozhýbat.",
-    playful,
+    "Bez tlaku: stačí velmi malý vstup.",
     `Téma pro ${targets}: co je jedna věc, kterou umíme uznat na pohledu druhé strany?`,
     "Mikrokrok: pošlete ostatním jednu krátkou otázku, na kterou jde odpovědět do 30 sekund.",
     "",
@@ -1810,6 +1800,14 @@ function initiatorKickoff(room, author) {
     "1. Zkusme každý napsat jednu věc, kterou na pohledu druhé strany dokážeme uznat.",
     "2. Neřešme teď celé drama. Dejme si jen 30 sekund: co je nejmenší společný krok?",
     "3. Můžeme začít jednoduše: každý jednu větu, co potřebuje, a jednu větu, co nabízí.",
+  ].join("\n");
+}
+
+function initiatorParticipantPrompt(room, author, participant) {
+  return [
+    `${author} zapnul/a Iniciátora, takže zkusím mediaci trochu rozhýbat.`,
+    `Pro vás, ${participant}: napište jen jednu větu. Co z pohledu druhé strany umíte uznat, i když s ní nesouhlasíte celou?`,
+    "Stačí krátce. Cíl není ustoupit, ale najít první společný bod.",
   ].join("\n");
 }
 

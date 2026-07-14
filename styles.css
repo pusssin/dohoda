@@ -3049,7 +3049,8 @@ body {
 }
 
 .composer-box textarea {
-  padding-right: 118px;
+  padding-right: 78px;
+  padding-bottom: 44px;
 }
 
 .composer-tools {
@@ -3058,6 +3059,14 @@ body {
   right: 9px;
   display: flex;
   gap: 6px;
+  align-items: center;
+}
+
+.composer-tools-left {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
   align-items: center;
 }
 
@@ -3079,18 +3088,6 @@ body {
 .icon-btn {
   background: color-mix(in srgb, var(--vision-glass-strong) 78%, transparent);
   color: var(--muted);
-}
-
-.voice-input-btn {
-  font-size: 0.72rem;
-  font-weight: 950;
-}
-
-.voice-input-btn.is-listening {
-  border-color: color-mix(in srgb, #d65f6c 46%, var(--line));
-  color: #d65f6c;
-  background: color-mix(in srgb, #d65f6c 12%, var(--vision-glass-strong));
-  box-shadow: 0 0 0 5px color-mix(in srgb, #d65f6c 9%, transparent);
 }
 
 .send-arrow {
@@ -3160,63 +3157,12 @@ form.private-main-composer .send-arrow,
   gap: 10px;
 }
 
-.speak-btn {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-  border: 1px solid color-mix(in srgb, var(--speaker, var(--line)) 36%, var(--line));
-  border-radius: 999px;
-  padding: 0;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--vision-glass-strong) 78%, transparent);
-  font-size: 0.72rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.speak-btn:hover {
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--speaker, var(--future-accent)) 58%, var(--line));
-}
-
 .section-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.voice-auto-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 10px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--vision-glass-soft) 70%, transparent);
-  font-size: 0.78rem;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.voice-auto-toggle input {
-  appearance: none;
-  width: 13px;
-  height: 13px;
-  border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
-  border-radius: 999px;
-  background: transparent;
-}
-
-.voice-auto-toggle input:checked {
-  border-color: transparent;
-  background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
 }
 
 .sources-tool {
@@ -3798,16 +3744,14 @@ form.private-main-composer .send-arrow,
 .send-arrow,
 form.private-main-composer .icon-btn,
 form.private-main-composer .send-arrow,
-.private-main-composer .primary-btn.send-arrow,
-.speak-btn {
+.private-main-composer .primary-btn.send-arrow {
   width: 23px;
   min-width: 23px;
   height: 23px;
   min-height: 23px;
 }
 
-.toggle-line input[type="checkbox"],
-.voice-auto-toggle input {
+.toggle-line input[type="checkbox"] {
   appearance: none;
   display: block;
   width: 18px;
@@ -3822,13 +3766,11 @@ form.private-main-composer .send-arrow,
   transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
 
-.toggle-line input[type="checkbox"]::before,
-.voice-auto-toggle input::before {
+.toggle-line input[type="checkbox"]::before {
   content: none;
 }
 
-.toggle-line input[type="checkbox"]:checked,
-.voice-auto-toggle input:checked {
+.toggle-line input[type="checkbox"]:checked {
   border-color: color-mix(in srgb, var(--future-accent) 82%, var(--future-accent-2));
   background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
   box-shadow:
@@ -3841,23 +3783,6 @@ form.private-main-composer .send-arrow,
   box-shadow:
     0 10px 26px color-mix(in srgb, var(--future-accent-2) 10%, transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--future-accent) 10%, transparent);
-}
-
-.voice-input-btn,
-form.private-main-composer .voice-input-btn {
-  width: 23px;
-  min-width: 23px;
-  height: 23px;
-  min-height: 23px;
-  border: 1px solid color-mix(in srgb, #e34b55 54%, var(--line));
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at 50% 50%, #ff6b72 0 38%, #d93643 39% 72%, color-mix(in srgb, #d93643 64%, transparent) 73%);
-  box-shadow:
-    0 0 0 4px color-mix(in srgb, #e34b55 9%, transparent),
-    0 8px 20px color-mix(in srgb, #e34b55 20%, transparent);
-  color: transparent;
-  font-size: 0;
 }
 
 .add-source-btn {
@@ -3909,29 +3834,17 @@ form.private-main-composer .voice-input-btn {
   line-height: 1.5;
 }
 
-.voice-input-btn.is-listening {
-  animation: recordPulse 1.12s ease-in-out infinite;
-  border-color: color-mix(in srgb, #ff6b72 84%, var(--line));
-  background:
-    radial-gradient(circle at 50% 50%, #ff8a90 0 35%, #e32636 36% 70%, color-mix(in srgb, #e32636 66%, transparent) 71%);
-  box-shadow:
-    0 0 0 5px color-mix(in srgb, #e32636 14%, transparent),
-    0 0 28px color-mix(in srgb, #e32636 48%, transparent);
+.protocol-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.voice-input-btn:disabled {
-  opacity: 0.58;
-  cursor: wait;
-  animation: none;
-}
-
-@keyframes recordPulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.18);
-  }
+.protocol-export-card pre {
+  max-height: 520px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--vision-glass-soft) 72%, transparent);
 }

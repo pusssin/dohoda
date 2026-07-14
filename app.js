@@ -470,8 +470,10 @@ function renderRoom() {
                 <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Enter odešle, Shift+Enter vloží nový řádek."></textarea>
                 <div class="composer-tools" aria-label="Ovládání zprávy">
                   <button id="clearDraft" class="icon-btn" type="button" title="Smazat rozepsaný text">×</button>
-                  <button id="openSourceDialog" class="icon-btn add-source-btn" type="button" title="Přidat zdroj" aria-label="Přidat zdroj">+</button>
                   <button class="primary-btn send-arrow" type="submit" title="Poslat zprávu" aria-label="Poslat zprávu">→</button>
+                </div>
+                <div class="composer-tools-left" aria-label="Přidat podklad">
+                  <button id="openSourceDialog" class="icon-btn add-source-btn" type="button" title="Přidat zdroj" aria-label="Přidat zdroj">+</button>
                 </div>
               </div>
             </form>
@@ -485,6 +487,7 @@ function renderRoom() {
                 ${toolTab("map", "Mapa")}
                 ${toolTab("diary", "Deník")}
                 ${toolTab("sources", "Zdroje")}
+                ${toolTab("protocol", "Protokol")}
                 ${toolTab("bridge", "Most")}
                 ${toolTab("forms", "Formuláře")}
                 ${toolTab("agreement", "Dohoda")}
@@ -623,7 +626,7 @@ function adminRoomRow(room) {
       </div>
       <span>${room.participants?.length || 0} účastníků</span>
       <span>${room.progress || 0} %</span>
-      <span>${settings.style}${settings.initiatorMode ? " + iniciátor" : ""}${settings.crazyMode ? " + crazy" : ""}</span>
+      <span>${settings.style}${settings.initiatorMode ? " + iniciátor" : ""}</span>
       <button class="secondary-btn" type="button" data-admin-select-room="${room.id}">Detail</button>
     </article>
   `;
@@ -648,7 +651,7 @@ function adminRoomDetail(room) {
       <div class="admin-section">
         <h3>AI mediátor</h3>
         <p class="meta">Styl: ${escapeHtml(settings.style)} · návrhy: ${settings.variants} · přerámování: ${settings.autoBridge ? "ano" : "ne"}</p>
-        <p class="meta">Crazy: ${settings.crazyMode ? "ano" : "ne"} · Iniciátor: ${settings.initiatorMode ? "ano" : "ne"}</p>
+        <p class="meta">Iniciátor: ${settings.initiatorMode ? "ano" : "ne"}</p>
       </div>
       <div class="admin-section">
         <h3>Pozvánka a bezpečnost</h3>
@@ -685,7 +688,6 @@ function mediationSettings(room) {
     autoBridge: room.mediationSettings?.autoBridge !== false,
     adaptToRecipient: room.mediationSettings?.adaptToRecipient !== false,
     variants: Number(room.mediationSettings?.variants ?? 3),
-    crazyMode: room.mediationSettings?.crazyMode === true,
     initiatorMode: room.mediationSettings?.initiatorMode === true,
   };
 }
@@ -698,7 +700,7 @@ function mediationSettingsPanel(room) {
     <form id="mediationSettingsForm" class="mediation-settings">
       <div>
         <strong>Styl mediace</strong>
-        <p class="meta">Běžné volby jsou nahoře. Experimenty jsou schované, aby nerušily mediaci.</p>
+        <p class="meta">Volby mění chování mediátora hned v této místnosti.</p>
       </div>
       <label>
         Jazykový přístup
@@ -719,19 +721,14 @@ function mediationSettingsPanel(room) {
           <option value="3" ${settings.variants === 3 ? "selected" : ""}>3 varianty</option>
         </select>
       </label>
-      <details id="experimentalModes" class="experimental-modes" ${state.experimentalOpen || settings.crazyMode || settings.initiatorMode ? "open" : ""}>
-        <summary>Experimentální režimy</summary>
-        <label class="toggle-line" title="Hravější tón pro uvolnění napětí. Nepoužívá se pro vážné nebo zranitelné situace.">
-          <input id="crazyMode" type="checkbox" ${settings.crazyMode ? "checked" : ""} />
-          <span>Crazy</span>
-          <span class="hint-dot" aria-label="Hravější tón pro odlehčení napětí.">?</span>
-        </label>
+      <details id="experimentalModes" class="experimental-modes" ${state.experimentalOpen || settings.initiatorMode ? "open" : ""}>
+        <summary>Aktivace účastníků</summary>
         <label class="toggle-line" title="Aktivně vymýšlí malé kroky, jak zapojit ostatní a dostat je do interakce.">
           <input id="initiatorMode" type="checkbox" ${settings.initiatorMode ? "checked" : ""} />
           <span>Iniciátor</span>
           <span class="hint-dot" aria-label="Aktivuje ostatní k účasti a dohodě.">?</span>
         </label>
-        <p class="meta">Nejsilnější testovací režim je Crazy + Iniciátor: nejdřív získat pozornost, pak ji převést do společné aktivity.</p>
+        <p class="meta">Mediátor začne sám navrhovat krátké otázky, mikrokroky a způsoby, jak dostat účastníky do bezpečné interakce.</p>
       </details>
       <label class="toggle-line" title="${escapeHtml(autoBridgeHelp)}">
         <input id="autoBridge" type="checkbox" ${settings.autoBridge ? "checked" : ""} />
@@ -869,6 +866,25 @@ function toolContent(room) {
       <div class="tool-card protocol-card">
         <h3>Průběžný protokol</h3>
         <pre>${escapeHtml(room.protocol || "")}</pre>
+      </div>
+    `;
+  }
+
+  if (state.activeTool === "protocol") {
+    const protocol = room.protocol || "";
+    return `
+      <div class="tool-card protocol-card protocol-export-card">
+        <div class="source-head">
+          <div>
+            <h3>Protokol komunikace</h3>
+            <p class="meta">Datovaný průběžný zápis změn, vstupů, zdrojů, analýz a posunů v místnosti.</p>
+          </div>
+          <div class="protocol-actions">
+            <button class="secondary-btn" type="button" id="downloadProtocolTxt">Export TXT</button>
+            <button class="secondary-btn" type="button" id="downloadProtocolPdf">Export PDF</button>
+          </div>
+        </div>
+        <pre id="protocolText">${escapeHtml(protocol || "Protokol zatím čeká na první záznam.")}</pre>
       </div>
     `;
   }
@@ -1124,7 +1140,6 @@ function bindRoomEvents(room, inviteUrl) {
         variants: Number(document.getElementById("mediationVariants").value),
         autoBridge: document.getElementById("autoBridge").checked,
         adaptToRecipient: document.getElementById("adaptToRecipient").checked,
-        crazyMode: document.getElementById("crazyMode").checked,
         initiatorMode: document.getElementById("initiatorMode").checked,
         author: state.sessionName || activeProfile().name,
       };
@@ -1230,7 +1245,19 @@ function bindRoomEvents(room, inviteUrl) {
 
   bindSourceEvents(room);
   bindDiaryEvents(room);
+  bindProtocolEvents(room);
 
+}
+
+function bindProtocolEvents(room) {
+  const txtButton = document.getElementById("downloadProtocolTxt");
+  const pdfButton = document.getElementById("downloadProtocolPdf");
+  if (txtButton) {
+    txtButton.addEventListener("click", () => downloadProtocolTxt(room));
+  }
+  if (pdfButton) {
+    pdfButton.addEventListener("click", () => exportProtocolPdf(room));
+  }
 }
 
 function bindSourceEvents(room, prefix = "source") {
@@ -1788,6 +1815,63 @@ async function apiAction(path, payload) {
   const data = await response.json();
   if (data.store?.rooms) state.rooms = data.store.rooms;
   return data;
+}
+
+function protocolFileName(room, extension) {
+  const slug = String(room.title || "dohoda")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 44) || "dohoda";
+  const date = new Date().toISOString().slice(0, 10);
+  return `${slug}-protokol-${date}.${extension}`;
+}
+
+function downloadProtocolTxt(room) {
+  const content = room.protocol || "Protokol zatím čeká na první záznam.";
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = protocolFileName(room, "txt");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  addToast("Protokol TXT připraven");
+}
+
+function exportProtocolPdf(room) {
+  const content = escapeHtml(room.protocol || "Protokol zatím čeká na první záznam.");
+  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=1100");
+  if (!printWindow) {
+    addToast("Prohlížeč zablokoval export. Povolte vyskakovací okno.");
+    return;
+  }
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="cs">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(protocolFileName(room, "pdf"))}</title>
+        <style>
+          body { margin: 36px; color: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+          h1 { margin: 0 0 18px; font-size: 24px; }
+          pre { white-space: pre-wrap; font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+          @page { margin: 18mm; }
+        </style>
+      </head>
+      <body>
+        <h1>Protokol Dohody</h1>
+        <pre>${content}</pre>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 250);
 }
 
 async function start() {
