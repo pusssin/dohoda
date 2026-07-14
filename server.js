@@ -264,6 +264,11 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
 
     if (action === "join") {
+      const alreadyParticipant = body.name && room.participants.includes(body.name);
+      if (room.locked && !alreadyParticipant) {
+        sendJson(res, 403, { error: "Místnost je uzamčená pro nové účastníky." });
+        return;
+      }
       if (body.name) {
         room.participants = unique([...room.participants, body.name]);
         ensurePrivateConversation(room, body.name);
@@ -350,6 +355,21 @@ async function handleApi(req, res, url) {
     if (action === "restore") {
       room.archived = false;
       room.updated = "obnoveno";
+    }
+
+    if (action === "lock") {
+      room.locked = true;
+      addDiary(room, "Admin", "Místnost byla uzamčena pro nové účastníky.", "admin");
+    }
+
+    if (action === "unlock") {
+      room.locked = false;
+      addDiary(room, "Admin", "Místnost byla znovu otevřena pro pozvánky.", "admin");
+    }
+
+    if (action === "reset-invite") {
+      room.inviteToken = randomToken();
+      addDiary(room, "Admin", "Pozvánka do místnosti byla resetována.", "admin");
     }
 
     await savePersistentStore();
@@ -518,6 +538,7 @@ function ensureRoomDefaults(room) {
   room.mediationSettings = sanitizeMediationSettings(room.mediationSettings || {});
   if (!room.privateConversations) room.privateConversations = {};
   if (!room.inviteToken) room.inviteToken = randomToken();
+  if (typeof room.locked !== "boolean") room.locked = false;
   if (!room.stage) room.stage = room.progress >= 80 ? "Návrh dohody" : room.progress >= 45 ? "Hledání mostu" : "Vstupní mapování";
   if (!Array.isArray(room.diary)) {
     room.diary = [

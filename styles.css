@@ -3265,6 +3265,17 @@ form.private-main-composer .send-arrow,
   margin-top: 14px;
 }
 
+.admin-tabs {
+  flex-wrap: wrap;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 14px;
+  align-items: start;
+}
+
 .admin-row {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) 110px 80px minmax(180px, 0.8fr) auto;
@@ -3278,10 +3289,86 @@ form.private-main-composer .send-arrow,
     color-mix(in srgb, var(--vision-glass-strong) 80%, transparent);
 }
 
+.admin-row.selected {
+  border-color: color-mix(in srgb, var(--future-accent) 46%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--future-accent) 10%, transparent), transparent 62%),
+    color-mix(in srgb, var(--vision-glass-strong) 90%, transparent);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--future-accent) 10%, transparent);
+}
+
 .admin-row > span {
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 850;
+}
+
+.admin-detail {
+  position: sticky;
+  top: 84px;
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--future-accent-2) 7%, transparent), transparent 64%),
+    color-mix(in srgb, var(--vision-glass-strong) 82%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.admin-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-detail-grid span {
+  display: grid;
+  gap: 4px;
+  min-height: 70px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 10px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--vision-glass-soft) 76%, transparent);
+}
+
+.admin-detail-grid strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.admin-section {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.admin-section h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.admin-section code {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--input-bg) 82%, transparent);
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 @media (max-width: 900px) {
@@ -3290,7 +3377,16 @@ form.private-main-composer .send-arrow,
     grid-template-columns: 1fr;
   }
 
+  .admin-layout,
   .admin-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-detail {
+    position: static;
+  }
+
+  .admin-detail-grid {
     grid-template-columns: 1fr;
   }
 }

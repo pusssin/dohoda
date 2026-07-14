@@ -7,6 +7,8 @@ const state = {
   activeProfileId: "u1",
   activeRoomId: location.hash.replace("#", "") || "room-team",
   expandedProfileRoomId: "",
+  adminFilter: "active",
+  adminRoomId: "",
   activeTool: "map",
   sessionName: localStorage.getItem("dohoda.participantName") || "",
   theme: localStorage.getItem("dohoda.theme") || "light",
@@ -457,6 +459,9 @@ function renderAdmin() {
   const archivedRooms = state.rooms.filter((room) => room.archived);
   const participants = [...new Set(state.rooms.flatMap((room) => room.participants || []))];
   const needsAttention = state.rooms.filter((room) => !room.archived && (room.progress || 0) < 35);
+  const filteredRooms = adminFilteredRooms();
+  const selectedRoom = state.rooms.find((room) => room.id === state.adminRoomId) || filteredRooms[0] || state.rooms[0];
+  if (selectedRoom) state.adminRoomId = selectedRoom.id;
   app.innerHTML = `
     ${topbar()}
     <section class="page workspace-page admin-page">
@@ -497,9 +502,18 @@ function renderAdmin() {
             <p class="room-kicker">Místnosti</p>
             <h2>Provozní přehled</h2>
           </div>
+          <div class="tabs admin-tabs">
+            ${adminFilterButton("active", "Aktivní")}
+            ${adminFilterButton("attention", "Pozornost")}
+            ${adminFilterButton("archived", "Archiv")}
+            ${adminFilterButton("all", "Vše")}
+          </div>
         </div>
-        <div class="admin-table">
-          ${state.rooms.map((room) => adminRoomRow(room)).join("")}
+        <div class="admin-layout">
+          <div class="admin-table">
+            ${filteredRooms.length ? filteredRooms.map((room) => adminRoomRow(room)).join("") : `<div class="empty">Žádná místnost v tomto filtru.</div>`}
+          </div>
+          ${selectedRoom ? adminRoomDetail(selectedRoom) : ""}
         </div>
       </section>
     </section>
@@ -508,21 +522,98 @@ function renderAdmin() {
   document.querySelectorAll("[data-admin-open-room]").forEach((button) => {
     button.addEventListener("click", () => route("room", button.dataset.adminOpenRoom));
   });
+  document.querySelectorAll("[data-admin-select-room]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.adminRoomId = button.dataset.adminSelectRoom;
+      renderAdmin();
+    });
+  });
+  document.querySelectorAll("[data-admin-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.adminFilter = button.dataset.adminFilter;
+      renderAdmin();
+    });
+  });
+  document.querySelectorAll("[data-admin-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await apiAction(`/api/rooms/${button.dataset.adminRoom}/${button.dataset.adminAction}`, {
+        author: state.sessionName || activeProfile().name,
+      });
+      renderAdmin();
+      addToast("Administrace uložena");
+    });
+  });
+}
+
+function adminFilteredRooms() {
+  if (state.adminFilter === "all") return state.rooms;
+  if (state.adminFilter === "archived") return state.rooms.filter((room) => room.archived);
+  if (state.adminFilter === "attention") return state.rooms.filter((room) => !room.archived && (room.progress || 0) < 35);
+  return state.rooms.filter((room) => !room.archived);
+}
+
+function adminFilterButton(id, label) {
+  return `<button class="tab ${state.adminFilter === id ? "active" : ""}" type="button" data-admin-filter="${id}">${label}</button>`;
 }
 
 function adminRoomRow(room) {
   const settings = mediationSettings(room);
   return `
-    <article class="admin-row">
+    <article class="admin-row ${state.adminRoomId === room.id ? "selected" : ""}">
       <div>
         <strong>${escapeHtml(room.title)}</strong>
-        <p class="meta">${escapeHtml(room.type || "Místnost")} · ${escapeHtml(room.stage || room.status || "bez stavu")}</p>
+        <p class="meta">${escapeHtml(room.type || "Místnost")} · ${escapeHtml(room.stage || room.status || "bez stavu")}${room.locked ? " · uzamčeno" : ""}</p>
       </div>
       <span>${room.participants?.length || 0} účastníků</span>
       <span>${room.progress || 0} %</span>
       <span>${settings.style}${settings.initiatorMode ? " + iniciátor" : ""}${settings.crazyMode ? " + crazy" : ""}</span>
-      <button class="secondary-btn" type="button" data-admin-open-room="${room.id}">Otevřít</button>
+      <button class="secondary-btn" type="button" data-admin-select-room="${room.id}">Detail</button>
     </article>
+  `;
+}
+
+function adminRoomDetail(room) {
+  const settings = mediationSettings(room);
+  const diary = Array.isArray(room.diary) ? room.diary.slice(-4).reverse() : [];
+  return `
+    <aside class="admin-detail">
+      <div class="section-title">
+        <div>
+          <p class="room-kicker">Detail místnosti</p>
+          <h2>${escapeHtml(room.title)}</h2>
+        </div>
+      </div>
+      <div class="admin-detail-grid">
+        <span><strong>${room.progress || 0}%</strong> posun</span>
+        <span><strong>${room.participants?.length || 0}</strong> účastníků</span>
+        <span><strong>${room.locked ? "Zamčeno" : "Otevřeno"}</strong> pozvánky</span>
+      </div>
+      <div class="admin-section">
+        <h3>AI mediátor</h3>
+        <p class="meta">Styl: ${escapeHtml(settings.style)} · návrhy: ${settings.variants} · přerámování: ${settings.autoBridge ? "ano" : "ne"}</p>
+        <p class="meta">Crazy: ${settings.crazyMode ? "ano" : "ne"} · Iniciátor: ${settings.initiatorMode ? "ano" : "ne"}</p>
+      </div>
+      <div class="admin-section">
+        <h3>Pozvánka a bezpečnost</h3>
+        <code>${escapeHtml(inviteLink(room))}</code>
+        <div class="admin-actions">
+          <button class="secondary-btn" type="button" data-admin-action="reset-invite" data-admin-room="${room.id}">Resetovat pozvánku</button>
+          <button class="secondary-btn" type="button" data-admin-action="${room.locked ? "unlock" : "lock"}" data-admin-room="${room.id}">${room.locked ? "Odemknout" : "Zamknout"}</button>
+        </div>
+      </div>
+      <div class="admin-section">
+        <h3>Účastníci</h3>
+        <div class="chips">${(room.participants || []).map((name) => `<span class="chip blue">${escapeHtml(name)}</span>`).join("") || `<span class="meta">Zatím nikdo</span>`}</div>
+      </div>
+      <div class="admin-section">
+        <h3>Neutrální deník</h3>
+        ${diary.length ? diary.map((item) => `<p class="meta">${escapeHtml(item.text || "")}</p>`).join("") : `<p class="meta">Zatím bez záznamu.</p>`}
+      </div>
+      <div class="admin-actions">
+        <button class="primary-btn" type="button" data-admin-open-room="${room.id}">Otevřít místnost</button>
+        <button class="secondary-btn" type="button" data-admin-action="${room.archived ? "restore" : "archive"}" data-admin-room="${room.id}">${room.archived ? "Vrátit z archivu" : "Archivovat"}</button>
+      </div>
+    </aside>
   `;
 }
 
