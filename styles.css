@@ -1400,6 +1400,62 @@ body {
   box-shadow: 0 0 22px color-mix(in srgb, var(--future-accent-2) 12%, transparent);
 }
 
+.sound-orb {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  margin-left: 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+  color: var(--muted);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 14px 34px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.sound-orb:hover {
+  transform: translateY(-1px);
+  color: var(--ink);
+}
+
+.sound-orb.active {
+  color: #ecfeff;
+  border-color: color-mix(in srgb, var(--future-accent-2) 58%, white);
+  background: color-mix(in srgb, var(--future-accent-2) 68%, #0f172a);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--future-accent-2) 14%, transparent), 0 16px 40px color-mix(in srgb, var(--future-accent-2) 30%, transparent);
+}
+
+.sound-orb::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 20;
+  width: min(260px, 74vw);
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--ink);
+  box-shadow: var(--lift);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.sound-orb:hover::after,
+.sound-orb:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .topbar-actions .ghost-btn {
   color: var(--muted);
 }
@@ -1432,6 +1488,13 @@ body {
   gap: 20px;
   padding-top: 42px;
   padding-bottom: 56px;
+  background:
+    radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--future-accent) 18%, transparent), transparent 34rem),
+    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--future-accent-2) 14%, transparent), transparent 30rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 78%, #7b8794) 0%, color-mix(in srgb, var(--surface-soft) 60%, #5f7182) 100%);
+  border-radius: 28px;
+  padding-left: clamp(18px, 3vw, 34px);
+  padding-right: clamp(18px, 3vw, 34px);
 }
 
 .quiet-head {

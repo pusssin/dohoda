@@ -230,7 +230,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/state") {
     normalizeStore();
-    const viewer = currentUser.name;
+    const viewer = cleanName(url.searchParams.get("participant")) || currentUser.name;
     sendJson(res, 200, {
       ...publicStoreFor(viewer, currentUser),
       aiConfigured: Boolean(openaiApiKey),
@@ -323,19 +323,22 @@ async function handleApi(req, res, url) {
     }
     const action = match[2];
     const body = await readJson(req);
+    let actorName = roomActorName(currentUser, room, body);
 
-    if (action !== "join" && !canViewRoom(currentUser, room, currentUser.name)) {
+    if (action !== "join" && !canViewRoom(currentUser, room, actorName)) {
       sendJson(res, 403, { error: "Do této místnosti nemáte přístup." });
       return;
     }
 
     if (action === "join") {
       const invite = String(body.invite || "").trim();
-      if (room.inviteToken && invite !== room.inviteToken && !room.participants.includes(currentUser.name) && !currentUser.admin) {
+      const joinName = cleanName(body.name || body.participant) || currentUser.name;
+      actorName = joinName;
+      const validInvite = Boolean(room.inviteToken && invite === room.inviteToken);
+      if (room.inviteToken && !validInvite && !room.participants.includes(joinName) && !room.participants.includes(currentUser.name) && !currentUser.admin) {
         sendJson(res, 403, { error: "Pozvánka do této místnosti není platná." });
         return;
       }
-      const joinName = currentUser.name || body.name;
       const alreadyParticipant = joinName && room.participants.includes(joinName);
       if (room.locked && !alreadyParticipant) {
         sendJson(res, 403, { error: "Místnost je uzamčená pro nové účastníky." });
@@ -359,7 +362,7 @@ async function handleApi(req, res, url) {
     }
 
     if (action === "private") {
-      const author = currentUser.name;
+      const author = actorName;
       const text = body.text || "";
       const conversation = ensurePrivateConversation(room, author);
       const topic = mediationActivityTopic(text);
@@ -383,7 +386,7 @@ async function handleApi(req, res, url) {
     }
 
     if (action === "messages") {
-      const author = currentUser.name;
+      const author = actorName;
       const text = body.text || "";
       room.messages.push({ author, text });
       addAi(room, await mediatorReply(room, text, author));
@@ -397,7 +400,7 @@ async function handleApi(req, res, url) {
         ...room.mediationSettings,
         ...body,
       });
-      const author = currentUser.name;
+      const author = actorName;
       if (author && room.mediationSettings.initiatorMode && !previousSettings.initiatorMode) {
         const conversation = ensurePrivateConversation(room, author);
         conversation.push({
@@ -445,7 +448,7 @@ async function handleApi(req, res, url) {
         sendJson(res, 400, { error: "Text zápisu je prázdný." });
         return;
       }
-      addDiary(room, currentUser.name, text.slice(0, 2000), "manual");
+      addDiary(room, actorName, text.slice(0, 2000), "manual");
     }
 
     if (action === "add-source") {
@@ -459,11 +462,11 @@ async function handleApi(req, res, url) {
         sendJson(res, 413, { error: "Zdroje v této místnosti přesáhly limit 500 MB." });
         return;
       }
-      source.addedBy = currentUser.name;
+      source.addedBy = actorName;
       source.addedById = currentUser.id;
       room.sources.unshift(source);
       room.sources = room.sources.slice(0, 40);
-      addDiary(room, currentUser.name, `Přidal/a zdroj: ${source.title}.`, "source");
+      addDiary(room, actorName, `Přidal/a zdroj: ${source.title}.`, "source");
       if (source.kind === "audio" && source.dataUrl && openaiApiKey) {
         try {
           source.extractedText = await transcribeAudioSource(source);
@@ -499,7 +502,7 @@ async function handleApi(req, res, url) {
         return;
       }
       room.sources = room.sources.filter((item) => item.id !== source.id);
-      addDiary(room, currentUser.name, `Smazal/a zdroj: ${source.title}.`, "source-delete");
+      addDiary(room, actorName, `Smazal/a zdroj: ${source.title}.`, "source-delete");
     }
 
     if (action === "delete-room") {
@@ -559,7 +562,7 @@ async function handleApi(req, res, url) {
     }
 
     await savePersistentStore();
-    const viewer = currentUser.name;
+    const viewer = actorName;
     sendJson(res, 200, { room: publicRoomFor(room, viewer), store: publicStoreFor(viewer, currentUser), authUser: publicUser(currentUser) });
     return;
   }
@@ -979,6 +982,13 @@ function canViewRoom(user, room, viewer = "") {
   if (room.ownerId && room.ownerId === user.id) return true;
   const name = String(viewer || user.name || "").trim();
   return Boolean(name && room.participants?.includes(name));
+}
+
+function roomActorName(user, room, body = {}) {
+  const requested = cleanName(body.participant || body.author || body.name);
+  if (!requested) return user.name;
+  if (user.admin || requested === user.name || room.participants?.includes(requested)) return requested;
+  return user.name;
 }
 
 function canManageRoom(user, room) {

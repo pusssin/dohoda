@@ -311,6 +311,7 @@ function renderProfile() {
 
 function renderJoinRoom(room) {
   const theme = conflictTheme(room);
+  const savedName = roomParticipantOverride(room.id);
   app.className = "app minimal";
   app.innerHTML = `
     <section class="entry" aria-label="Připojení do místnosti" style="${theme.style}">
@@ -323,7 +324,7 @@ function renderJoinRoom(room) {
       <form id="joinForm" class="entry-form">
         <label>
           Vaše jméno
-          <input id="joinName" type="text" placeholder="Např. Petr" autofocus />
+          <input id="joinName" type="text" placeholder="Např. Petr" value="${escapeHtml(savedName)}" autofocus />
         </label>
         <button class="primary-btn" type="submit">Vstoupit do místnosti</button>
       </form>
@@ -335,7 +336,7 @@ function renderJoinRoom(room) {
     const name = document.getElementById("joinName").value.trim();
     if (!name) return;
     try {
-      setSessionName(name);
+      setRoomParticipantName(room.id, name);
       await apiAction(`/api/rooms/${room.id}/join`, { name, invite: state.inviteToken });
       route("room", room.id);
     } catch {
@@ -426,7 +427,7 @@ function agreementRow(room, expandedRoomId) {
 function renderRoom() {
   app.className = "app";
   const room = activeRoom();
-  if (!state.sessionName || new URLSearchParams(location.search).get("join") === "1") {
+  if (!roomParticipantName(room.id) || new URLSearchParams(location.search).get("join") === "1") {
     renderJoinRoom(room);
     return;
   }
@@ -459,7 +460,7 @@ function renderRoom() {
             <div class="section-title">
               <div>
                 <p class="room-kicker">Hlavní prostor</p>
-                <h2>${escapeHtml(state.sessionName)} + AI mediátor</h2>
+                <h2>${escapeHtml(roomParticipantName(room.id))} + AI mediátor</h2>
                 <p class="meta">Napište napřímo, co je potřeba. Mediátor z toho vytáhne podstatu, propojí ji s ostatními a předá bezpečné jádro.</p>
               </div>
               <div class="section-actions">
@@ -741,7 +742,7 @@ function mediationSettingsPanel(room) {
 }
 
 function privateConversation(room) {
-  const name = state.sessionName || activeProfile().name;
+  const name = roomParticipantName(room.id);
   return room.privateConversations?.[name] || [
     {
       author: "AI mediátor",
@@ -789,7 +790,8 @@ function mediationProcessPanel(room) {
 }
 
 function privateBridgePanel(room) {
-  const others = room.participants.filter((name) => name !== state.sessionName);
+  const currentName = roomParticipantName(room.id);
+  const others = room.participants.filter((name) => name !== currentName);
   const otherLabel = others.length ? others.join(", ") : "pozvaná strana";
   return `
     <div class="bridge-panel">
@@ -1030,7 +1032,7 @@ function listTool(title, items) {
 }
 
 function messageView(message) {
-  const mine = message.me || message.author === state.sessionName;
+  const mine = message.me || message.author === roomParticipantName();
   const parsed = parseDraftSuggestions(message.text);
   const roleClass = message.ai ? "speaker-ai" : mine ? "speaker-me" : "speaker-other";
   const accent = speakerAccent(message, mine);
@@ -1138,7 +1140,7 @@ function bindRoomEvents(room, inviteUrl) {
         autoBridge: document.getElementById("autoBridge").checked,
         adaptToRecipient: document.getElementById("adaptToRecipient").checked,
         initiatorMode: room.mediationSettings?.initiatorMode === true,
-        author: state.sessionName || activeProfile().name,
+        author: roomParticipantName(room.id),
       };
       room.mediationSettings = payload;
       try {
@@ -1158,7 +1160,7 @@ function bindRoomEvents(room, inviteUrl) {
       const payload = {
         ...current,
         initiatorMode: !current.initiatorMode,
-        author: state.sessionName || activeProfile().name,
+        author: roomParticipantName(room.id),
       };
       room.mediationSettings = payload;
       setFormWaiting(initiatorButton, true, "...");
@@ -1179,7 +1181,7 @@ function bindRoomEvents(room, inviteUrl) {
     const button = event.currentTarget.querySelector('button[type="submit"]');
     const text = textarea.value.trim();
     if (!text) return;
-    const author = state.sessionName || activeProfile().name;
+    const author = roomParticipantName(room.id);
     setFormWaiting(button, true, "AI odpovídá...");
     state.requestInProgress = true;
     const conversation = ensureClientPrivateConversation(room, author);
@@ -1355,7 +1357,7 @@ async function buildSourcePayload(prefix = "source") {
   const payload = {
     kind,
     title,
-    author: state.sessionName || activeProfile().name,
+    author: roomParticipantName(),
   };
 
   if (kind === "text") {
@@ -1447,12 +1449,20 @@ function topbar() {
       </button>
       <div class="topbar-actions">
         <span class="user-pill">${escapeHtml(user?.name || "")}${user?.admin ? " · admin" : ""}</span>
-        <button class="sound-toggle ${state.soundEnabled ? "active" : ""}" type="button" onclick="toggleSoundNotifications()">${state.soundEnabled ? "Zvuk zapnutý" : "Zvuk"}</button>
         <button class="theme-toggle" type="button" onclick="toggleTheme()">${themeLabel()}</button>
         <button class="secondary-btn" type="button" onclick="route('profile')">Profil</button>
         ${user?.admin ? `<button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>` : ""}
         <button class="ghost-btn" type="button" onclick="logout()">Odhlásit</button>
       </div>
+      <button
+        class="sound-orb ${state.soundEnabled ? "active" : ""}"
+        type="button"
+        onclick="toggleSoundNotifications()"
+        aria-label="Zapnutí zvukové notifikace při nějaké aktivitě v místnosti"
+        data-tip="Zapnutí zvukové notifikace při nějaké aktivitě v místnosti"
+      >
+        <span aria-hidden="true">♪</span>
+      </button>
     </nav>
   `;
 }
@@ -1511,7 +1521,7 @@ function activeRoom() {
 
 function roomActivitySignature(room) {
   if (!room) return "";
-  const name = state.sessionName || activeProfile().name;
+  const name = roomParticipantName(room.id);
   const privateMessages = room.privateConversations?.[name] || [];
   return [
     room.id,
@@ -1805,6 +1815,29 @@ function setSessionName(name) {
   localStorage.setItem("dohoda.participantName", name);
 }
 
+function participantStorageKey(roomId = state.activeRoomId) {
+  return `dohoda.roomParticipant.${roomId || "active"}`;
+}
+
+function roomParticipantOverride(roomId = state.activeRoomId) {
+  return localStorage.getItem(participantStorageKey(roomId)) || "";
+}
+
+function roomParticipantName(roomId = state.activeRoomId) {
+  return roomParticipantOverride(roomId) || state.sessionName || state.authUser?.name || activeProfile().name || "";
+}
+
+function setRoomParticipantName(roomId, name) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return;
+  localStorage.setItem(participantStorageKey(roomId), cleanName);
+  state.sessionName = cleanName;
+}
+
+function isRoomContext() {
+  return state.view === "room" || location.hash.startsWith("#room-");
+}
+
 async function submitAuth() {
   const endpoint = state.authMode === "register" ? "/api/auth/register" : "/api/auth/login";
   const payload = {
@@ -1853,7 +1886,7 @@ async function loadAuth() {
     const data = await response.json();
     state.authUser = data.user || null;
     state.googleConfigured = Boolean(data.googleConfigured);
-    if (state.authUser?.name) {
+    if (state.authUser?.name && (!isRoomContext() || !roomParticipantOverride())) {
       state.sessionName = state.authUser.name;
       localStorage.setItem("dohoda.participantName", state.sessionName);
     }
@@ -1865,6 +1898,10 @@ async function loadAuth() {
 async function loadRemoteState() {
   try {
     const params = new URLSearchParams();
+    const participant = isRoomContext()
+      ? roomParticipantOverride() || state.sessionName || ""
+      : state.authUser?.name || state.sessionName || "";
+    if (participant) params.set("participant", participant);
     const response = await fetch(`/api/state${params.toString() ? `?${params}` : ""}`, { cache: "no-store" });
     if (response.status === 401) {
       state.authUser = null;
@@ -1881,7 +1918,7 @@ async function loadRemoteState() {
       state.googleConfigured = Boolean(data.googleConfigured);
       if (data.authUser) {
         state.authUser = data.authUser;
-        state.sessionName = data.authUser.name || "";
+        if (!isRoomContext() || !roomParticipantOverride()) state.sessionName = data.authUser.name || "";
       }
     }
   } catch {
@@ -1891,7 +1928,7 @@ async function loadRemoteState() {
 
 async function apiAction(path, payload) {
   const bodyPayload = {
-    participant: state.sessionName || "",
+    participant: roomParticipantName(),
     ...payload,
   };
   const response = await fetch(path, {
@@ -1998,11 +2035,14 @@ async function start() {
 async function applyParticipantFromUrl() {
   const params = new URLSearchParams(location.search);
   state.inviteToken = params.get("invite") || state.inviteToken;
-  const participant = params.get("participant") || state.authUser?.name || "";
-  const cleanName = participant.trim();
-  if (!cleanName) return;
   if (location.hash.startsWith("#room-")) state.activeRoomId = location.hash.replace("#", "");
-  if (!state.authUser?.name) setSessionName(cleanName);
+  const participant = params.get("participant") || roomParticipantOverride(state.activeRoomId) || "";
+  const cleanName = participant.trim();
+  if (!cleanName) {
+    if (location.hash.startsWith("#room-")) state.view = "room";
+    return;
+  }
+  setRoomParticipantName(state.activeRoomId, cleanName);
   const room = state.rooms.find((item) => item.id === state.activeRoomId);
   if (!room || !room.participants.includes(cleanName)) {
     try {
