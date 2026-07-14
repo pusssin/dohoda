@@ -3049,7 +3049,7 @@ body {
 }
 
 .composer-box textarea {
-  padding-right: 82px;
+  padding-right: 118px;
 }
 
 .composer-tools {
@@ -3079,6 +3079,18 @@ body {
 .icon-btn {
   background: color-mix(in srgb, var(--vision-glass-strong) 78%, transparent);
   color: var(--muted);
+}
+
+.voice-input-btn {
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.voice-input-btn.is-listening {
+  border-color: color-mix(in srgb, #d65f6c 46%, var(--line));
+  color: #d65f6c;
+  background: color-mix(in srgb, #d65f6c 12%, var(--vision-glass-strong));
+  box-shadow: 0 0 0 5px color-mix(in srgb, #d65f6c 9%, transparent);
 }
 
 .send-arrow {
@@ -3139,6 +3151,72 @@ form.private-main-composer .send-arrow,
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.42) inset,
     0 12px 34px color-mix(in srgb, var(--speaker, transparent) 7%, transparent);
+}
+
+.message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.speak-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--speaker, var(--line)) 36%, var(--line));
+  border-radius: 999px;
+  padding: 0;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--vision-glass-strong) 78%, transparent);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.speak-btn:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--speaker, var(--future-accent)) 58%, var(--line));
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.voice-auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--vision-glass-soft) 70%, transparent);
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.voice-auto-toggle input {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.voice-auto-toggle input:checked {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
 }
 
 .message::before {
@@ -3501,7 +3579,7 @@ form.private-main-composer .send-arrow,
 
 @media (max-width: 760px) {
   .composer-box textarea {
-    padding-right: 92px;
+    padding-right: 118px;
   }
 
   .composer-tools {

@@ -15,6 +15,9 @@ const state = {
   authMode: "login",
   authError: "",
   googleConfigured: false,
+  voiceAutoRead: localStorage.getItem("dohoda.voiceAutoRead") === "1",
+  voiceListening: false,
+  speechRecognition: null,
   theme: localStorage.getItem("dohoda.theme") || "light",
   online: false,
   aiConfigured: false,
@@ -456,7 +459,13 @@ function renderRoom() {
                 <h2>${escapeHtml(state.sessionName)} + AI mediátor</h2>
                 <p class="meta">Napište napřímo, co je potřeba. Mediátor z toho vytáhne podstatu, propojí ji s ostatními a předá bezpečné jádro.</p>
               </div>
-              <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
+              <div class="section-actions">
+                <label class="voice-auto-toggle" title="Když mediátor odpoví, prohlížeč odpověď rovnou přečte nahlas.">
+                  <input id="voiceAutoRead" type="checkbox" ${state.voiceAutoRead ? "checked" : ""} />
+                  <span>Číst AI</span>
+                </label>
+                <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
+              </div>
             </div>
             ${mediationProcessPanel(room)}
             ${privateBridgePanel(room)}
@@ -466,6 +475,7 @@ function renderRoom() {
                 <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Enter odešle, Shift+Enter vloží nový řádek."></textarea>
                 <div class="composer-tools" aria-label="Ovládání zprávy">
                   <button id="clearDraft" class="icon-btn" type="button" title="Smazat rozepsaný text">×</button>
+                  <button id="voiceInput" class="icon-btn voice-input-btn" type="button" title="Nadiktovat zprávu" aria-label="Nadiktovat zprávu">M</button>
                   <button class="primary-btn send-arrow" type="submit" title="Poslat zprávu" aria-label="Poslat zprávu">→</button>
                 </div>
               </div>
@@ -919,9 +929,15 @@ function messageView(message) {
       ? "Aktivita v mediaci"
       : message.author;
   const decision = message.decision ? `<small>${escapeHtml(message.decision)}</small>` : "";
+  const speakButton = message.ai && !message.pending
+    ? `<button class="speak-btn" type="button" data-speak="${escapeHtml(parsed.body || message.text)}" title="Přečíst nahlas" aria-label="Přečíst zprávu mediátora nahlas">▶</button>`
+    : "";
   return `
     <article class="message ${roleClass} ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}" style="--speaker: ${accent};">
-      <strong>${escapeHtml(label)}</strong>
+      <div class="message-head">
+        <strong>${escapeHtml(label)}</strong>
+        ${speakButton}
+      </div>
       ${decision}
       <p>${escapeHtml(parsed.body || message.text)}</p>
       ${parsed.drafts.length ? `
@@ -1048,10 +1064,11 @@ function bindRoomEvents(room, inviteUrl) {
     textarea.value = "";
     renderRoom();
     try {
-      await apiAction(`/api/rooms/${room.id}/private`, {
+      const result = await apiAction(`/api/rooms/${room.id}/private`, {
         author,
         text,
       });
+      if (state.voiceAutoRead) speakLatestMediatorReply(result.room, author);
       renderRoom();
     } catch (error) {
       await loadRemoteState();
@@ -1074,6 +1091,8 @@ function bindRoomEvents(room, inviteUrl) {
 
   const textarea = document.getElementById("privateMediatorText");
   const clearDraft = document.getElementById("clearDraft");
+  const voiceInput = document.getElementById("voiceInput");
+  const voiceAutoRead = document.getElementById("voiceAutoRead");
   if (clearDraft && textarea) {
     clearDraft.addEventListener("click", () => {
       textarea.value = "";
@@ -1086,6 +1105,22 @@ function bindRoomEvents(room, inviteUrl) {
       }
     });
   }
+
+  if (voiceInput && textarea) {
+    voiceInput.addEventListener("click", () => startVoiceInput(textarea, voiceInput));
+  }
+
+  if (voiceAutoRead) {
+    voiceAutoRead.addEventListener("change", () => {
+      state.voiceAutoRead = voiceAutoRead.checked;
+      localStorage.setItem("dohoda.voiceAutoRead", state.voiceAutoRead ? "1" : "0");
+      addToast(state.voiceAutoRead ? "Čtení odpovědí zapnuto" : "Čtení odpovědí vypnuto");
+    });
+  }
+
+  document.querySelectorAll("[data-speak]").forEach((button) => {
+    button.addEventListener("click", () => speakText(button.dataset.speak || ""));
+  });
 
   document.getElementById("draftAgreement").addEventListener("click", async () => {
     await apiAction(`/api/rooms/${room.id}/agreement`, {});
@@ -1266,6 +1301,82 @@ function mixColor(from, to, ratio) {
 
 function rgb(parts) {
   return `rgb(${parts[0]}, ${parts[1]}, ${parts[2]})`;
+}
+
+function speechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function startVoiceInput(textarea, button) {
+  const Recognition = speechRecognitionConstructor();
+  if (!Recognition) {
+    addToast("Diktování tento prohlížeč nepodporuje. Zkuste Chrome.");
+    return;
+  }
+  if (state.speechRecognition && state.voiceListening) {
+    state.speechRecognition.stop();
+    return;
+  }
+
+  const recognition = new Recognition();
+  state.speechRecognition = recognition;
+  recognition.lang = "cs-CZ";
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  const originalValue = textarea.value.trim();
+  let finalTranscript = "";
+
+  button.classList.add("is-listening");
+  button.textContent = "■";
+  state.voiceListening = true;
+  addToast("Poslouchám...");
+
+  recognition.onresult = (event) => {
+    let interimTranscript = "";
+    finalTranscript = "";
+    for (let index = 0; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0]?.transcript || "";
+      if (event.results[index].isFinal) finalTranscript += transcript;
+      else interimTranscript += transcript;
+    }
+    const pieces = [originalValue, finalTranscript.trim(), interimTranscript.trim()].filter(Boolean);
+    textarea.value = pieces.join(originalValue ? " " : "");
+    textarea.focus();
+  };
+
+  recognition.onerror = () => {
+    addToast("Diktování se nepovedlo.");
+  };
+
+  recognition.onend = () => {
+    state.voiceListening = false;
+    button.classList.remove("is-listening");
+    button.textContent = "M";
+    textarea.focus();
+  };
+
+  recognition.start();
+}
+
+function speakText(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return;
+  if (!("speechSynthesis" in window)) {
+    addToast("Čtení nahlas tento prohlížeč nepodporuje.");
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.lang = "cs-CZ";
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
+function speakLatestMediatorReply(room, author) {
+  const conversation = room?.privateConversations?.[author] || [];
+  const latest = [...conversation].reverse().find((message) => message.ai && !message.pending);
+  if (latest?.text) speakText(parseDraftSuggestions(latest.text).body || latest.text);
 }
 
 function makeAgreement(room) {
