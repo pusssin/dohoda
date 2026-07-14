@@ -3739,3 +3739,133 @@ form.private-main-composer .send-arrow,
   font-size: 0.82rem;
   font-weight: 900;
 }
+
+/* Final layout and control polish */
+.admin-page {
+  width: min(1500px, 100%);
+}
+
+.admin-table-wrap {
+  overflow: visible;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 31vw, 470px);
+  gap: 18px;
+  align-items: start;
+}
+
+.admin-table {
+  min-width: 0;
+}
+
+.admin-row {
+  grid-template-columns: minmax(180px, 1fr) 92px 64px minmax(130px, 0.62fr) auto;
+  min-width: 0;
+}
+
+.admin-row > div,
+.admin-row > span {
+  min-width: 0;
+}
+
+.admin-detail {
+  position: sticky;
+  top: 84px;
+  width: 100%;
+  min-width: 0;
+  z-index: 0;
+}
+
+.admin-detail .section-title,
+.admin-detail-grid,
+.admin-section,
+.admin-actions {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-detail {
+    position: static;
+  }
+}
+
+.toggle-line input[type="checkbox"],
+.voice-auto-toggle input {
+  appearance: none;
+  display: block;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--future-accent-2) 46%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--future-accent-2) 26%, var(--vision-glass-strong));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 12%, transparent);
+  transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.toggle-line input[type="checkbox"]::before,
+.voice-auto-toggle input::before {
+  content: none;
+}
+
+.toggle-line input[type="checkbox"]:checked,
+.voice-auto-toggle input:checked {
+  border-color: color-mix(in srgb, var(--future-accent) 82%, var(--future-accent-2));
+  background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--future-accent) 13%, transparent),
+    0 0 18px color-mix(in srgb, var(--future-accent-2) 46%, transparent);
+  transform: scale(1.06);
+}
+
+.toggle-line:has(input[type="checkbox"]:checked) {
+  box-shadow:
+    0 10px 26px color-mix(in srgb, var(--future-accent-2) 10%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--future-accent) 10%, transparent);
+}
+
+.voice-input-btn,
+form.private-main-composer .voice-input-btn {
+  width: 27px;
+  min-width: 27px;
+  height: 27px;
+  min-height: 27px;
+  border: 1px solid color-mix(in srgb, #e34b55 54%, var(--line));
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, #ff6b72 0 38%, #d93643 39% 72%, color-mix(in srgb, #d93643 64%, transparent) 73%);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, #e34b55 9%, transparent),
+    0 8px 20px color-mix(in srgb, #e34b55 20%, transparent);
+  color: transparent;
+  font-size: 0;
+}
+
+.voice-input-btn.is-listening {
+  animation: recordPulse 1.12s ease-in-out infinite;
+  border-color: color-mix(in srgb, #ff6b72 84%, var(--line));
+  background:
+    radial-gradient(circle at 50% 50%, #ff8a90 0 35%, #e32636 36% 70%, color-mix(in srgb, #e32636 66%, transparent) 71%);
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, #e32636 14%, transparent),
+    0 0 28px color-mix(in srgb, #e32636 48%, transparent);
+}
+
+@keyframes recordPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.18);
+  }
+}

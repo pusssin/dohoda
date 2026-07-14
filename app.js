@@ -476,7 +476,7 @@ function renderRoom() {
                 <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Enter odešle, Shift+Enter vloží nový řádek."></textarea>
                 <div class="composer-tools" aria-label="Ovládání zprávy">
                   <button id="clearDraft" class="icon-btn" type="button" title="Smazat rozepsaný text">×</button>
-                  <button id="voiceInput" class="icon-btn voice-input-btn" type="button" title="Nadiktovat zprávu" aria-label="Nadiktovat zprávu">M</button>
+                  <button id="voiceInput" class="icon-btn voice-input-btn" type="button" title="Nadiktovat zprávu" aria-label="Nadiktovat zprávu"></button>
                   <button class="primary-btn send-arrow" type="submit" title="Poslat zprávu" aria-label="Poslat zprávu">→</button>
                 </div>
               </div>
@@ -1501,7 +1501,7 @@ function startVoiceInput(textarea, button) {
   let finalTranscript = "";
 
   button.classList.add("is-listening");
-  button.textContent = "■";
+  button.textContent = "";
   state.voiceListening = true;
   addToast("Poslouchám...");
 
@@ -1525,7 +1525,7 @@ function startVoiceInput(textarea, button) {
   recognition.onend = () => {
     state.voiceListening = false;
     button.classList.remove("is-listening");
-    button.textContent = "M";
+    button.textContent = "";
     textarea.focus();
   };
 
