@@ -635,7 +635,7 @@ async function distributeMediatedUpdate(room, text, author) {
   const recipients = room.participants.filter((name) => name && name !== author);
   if (!recipients.length) return;
 
-  for (const recipient of recipients) {
+  await Promise.all(recipients.map(async (recipient) => {
     const conversation = ensurePrivateConversation(room, recipient);
     const mediatedText = settings.autoBridge
       ? await mediatedRecipientUpdate(room, text, author, recipient)
@@ -647,7 +647,7 @@ async function distributeMediatedUpdate(room, text, author) {
       mediatedFrom: author,
       decision: "Bezpečné shrnutí pro tohoto účastníka",
     });
-  }
+  }));
 }
 
 function addParticipantActivityNotices(room, author, text = "") {
@@ -744,7 +744,7 @@ async function openaiMediatorReply(room, text, author) {
         },
       ],
       temperature: 0.72,
-      max_output_tokens: 620,
+      max_output_tokens: 420,
     }),
   });
 
@@ -762,7 +762,7 @@ async function openaiMediatorReply(room, text, author) {
 function buildMediatorContext(room, text, author) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const recentMessages = room.messages
-    .slice(-12)
+    .slice(-8)
     .map((message) => `${message.author}: ${message.text}`)
     .join("\n");
   const recipients = room.participants.filter((name) => name !== author).join(", ") || "ostatní strany";
@@ -809,7 +809,7 @@ async function openaiPrivateMediatorReply(room, text, author) {
           content: [
             "Jsi soukromý AI mediátor v aplikaci Dohoda. Mluvíš jen s jedním účastníkem.",
             "Tvým cílem je rychle pochopit podstatu, najít společný bod s druhou stranou a udělat další mediační krok.",
-            "Odpovídej česky, empaticky, živě, stručně a povzbudivě. Nezněj stroze, terapeuticky ani sportovně-direktivně.",
+            "Odpovídej česky, empaticky, živě, velmi stručně a povzbudivě. Nezněj stroze, terapeuticky ani sportovně-direktivně.",
             "Varianty formulace dávej přesně podle nastavení místnosti. Když jsou zapnuté, napiš je na konec jako samostatný blok s nadpisem 'Návrhy formulace:' a očísluj je.",
             "V každé odpovědi rozlišuj dvě věci: co je soukromá podpora pro tohoto účastníka a co je podstata, kterou lze bezpečně předat ostatním stranám.",
             "Vždy výslovně pojmenuj mediační rozhodnutí: co zůstává soukromé, co lze předat jako shrnutí a co zatím nepředávat.",
@@ -826,7 +826,7 @@ async function openaiPrivateMediatorReply(room, text, author) {
         },
       ],
       temperature: 0.7,
-      max_output_tokens: 520,
+      max_output_tokens: 360,
     }),
   });
 
@@ -870,7 +870,7 @@ async function openaiRecipientBridgeReply(room, text, author, recipient) {
         },
       ],
       temperature: 0.72,
-      max_output_tokens: 320,
+      max_output_tokens: 220,
     }),
   });
 
@@ -888,11 +888,11 @@ async function openaiRecipientBridgeReply(room, text, author, recipient) {
 function buildPrivateMediatorContext(room, text, author) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const privateHistory = ensurePrivateConversation(room, author)
-    .slice(-10)
+    .slice(-6)
     .map((message) => `${message.author}: ${message.text}`)
     .join("\n");
   const publicMessages = room.messages
-    .slice(-8)
+    .slice(-5)
     .map((message) => `${message.author}: ${message.text}`)
     .join("\n");
   const otherParticipants = room.participants.filter((name) => name !== author).join(", ") || "zatím nikdo další";
@@ -922,14 +922,14 @@ function buildPrivateMediatorContext(room, text, author) {
     "",
     `Nová soukromá zpráva od ${author}: ${text}`,
     "",
-    `Odpověz soukromě a svižně, max ${settings.variants > 0 ? 220 : 150} slov. Použij oddíly: 1. "Podstata" - co je jádro sdělení. 2. "Spojka" - kde se to může potkat se zájmem ostatních. 3. "Co předám" - bezpečné shrnutí pro ostatní a co zůstává soukromé. 4. "Další tah" - jeden konkrétní krok. ${settings.initiatorMode ? "Jako Iniciátor přidej jeden malý aktivující tah, který získá ostatní k účasti nebo otevře společné téma." : ""} ${settings.crazyMode ? "Jako Crazy režim můžeš použít krátký vtipný obrat pro získání pozornosti, ale bez zesměšnění lidí nebo bolesti." : ""} ${settings.crazyMode && settings.initiatorMode ? "Když jsou zapnuté oba režimy, hlavní cíl je získat pozornost a hned ji převést do spoluúčasti na shodě." : ""} ${settings.variants > 0 ? `Na konec přidej blok "Návrhy formulace:" a přesně ${settings.variants} očíslované varianty vět, které může účastník rovnou poslat.` : "Nepřidávej samostatné návrhy formulace."}`,
+    `Odpověz soukromě a svižně, max ${settings.variants > 0 ? 165 : 115} slov. Použij oddíly: 1. "Podstata" - jádro sdělení. 2. "Spojka" - kde se to může potkat se zájmem ostatních. 3. "Co předám" - bezpečné shrnutí pro ostatní a co zůstává soukromé. 4. "Další tah" - jeden konkrétní krok. ${settings.initiatorMode ? "Jako Iniciátor přidej jeden malý aktivující tah." : ""} ${settings.crazyMode ? "Jako Crazy režim můžeš použít krátký vtipný obrat, ale bez zesměšnění." : ""} ${settings.crazyMode && settings.initiatorMode ? "Když jsou zapnuté oba režimy, upoutej pozornost a hned ji převeď do společné aktivity." : ""} ${settings.variants > 0 ? `Na konec přidej blok "Návrhy formulace:" a přesně ${settings.variants} krátké očíslované varianty vět.` : "Nepřidávej samostatné návrhy formulace."}`,
   ].join("\n");
 }
 
 function buildRecipientBridgeContext(room, text, author, recipient) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
   const recipientHistory = ensurePrivateConversation(room, recipient)
-    .slice(-8)
+    .slice(-5)
     .map((message) => `${message.author}: ${message.text}`)
     .join("\n");
   return [

@@ -231,7 +231,6 @@ function renderProfile() {
   document.querySelectorAll("[data-archive-room]").forEach((button) => {
     button.addEventListener("click", async () => {
       await apiAction(`/api/rooms/${button.dataset.archiveRoom}/archive`, {});
-      await loadRemoteState();
       renderProfile();
     });
   });
@@ -239,7 +238,6 @@ function renderProfile() {
   document.querySelectorAll("[data-restore-room]").forEach((button) => {
     button.addEventListener("click", async () => {
       await apiAction(`/api/rooms/${button.dataset.restoreRoom}/restore`, {});
-      await loadRemoteState();
       renderProfile();
     });
   });
@@ -273,7 +271,6 @@ function renderJoinRoom(room) {
     try {
       setSessionName(name);
       await apiAction(`/api/rooms/${room.id}/join`, { name, invite: state.inviteToken });
-      await loadRemoteState();
       route("room", room.id);
     } catch {
       addToast("Připojení se nepovedlo. Zkuste to znovu.");
@@ -799,8 +796,8 @@ function bindRoomEvents(room, inviteUrl) {
       room.mediationSettings = payload;
       try {
         await apiAction(`/api/rooms/${room.id}/settings`, payload);
-        await loadRemoteState();
         addToast("Nastavení mediace uloženo");
+        renderRoom();
       } catch (error) {
         addToast(error.message || "Nastavení se nepovedlo uložit.");
       }
@@ -831,7 +828,6 @@ function bindRoomEvents(room, inviteUrl) {
         author,
         text,
       });
-      await loadRemoteState();
       renderRoom();
     } catch (error) {
       await loadRemoteState();
@@ -869,7 +865,6 @@ function bindRoomEvents(room, inviteUrl) {
 
   document.getElementById("draftAgreement").addEventListener("click", async () => {
     await apiAction(`/api/rooms/${room.id}/agreement`, {});
-    await loadRemoteState();
     state.activeTool = "agreement";
     renderRoom();
   });
@@ -878,7 +873,6 @@ function bindRoomEvents(room, inviteUrl) {
   if (summarize) {
     summarize.addEventListener("click", async () => {
       await apiAction(`/api/rooms/${room.id}/analysis`, {});
-      await loadRemoteState();
       renderRoom();
     });
   }
@@ -895,7 +889,6 @@ async function createRoom() {
     author: state.sessionName || activeProfile().name,
   };
   const result = await apiAction("/api/rooms", payload);
-  await loadRemoteState();
   ensurePrivateNotes(result.room.id);
   route("room", result.room.id);
 }
@@ -1251,7 +1244,6 @@ async function applyParticipantFromUrl() {
   if (!room.participants.includes(cleanName)) {
     try {
       await apiAction(`/api/rooms/${room.id}/join`, { name: cleanName, invite: state.inviteToken });
-      await loadRemoteState();
     } catch {
       addToast("Testovací role se nepovedla připojit.");
     }
