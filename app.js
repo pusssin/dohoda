@@ -1453,24 +1453,26 @@ function topbar() {
         ${user?.admin ? `<button class="secondary-btn" type="button" onclick="route('admin')">Admin</button>` : ""}
         <button class="ghost-btn" type="button" onclick="logout()">Odhlásit</button>
       </div>
-      <button
-        class="mode-orb"
-        type="button"
-        onclick="toggleTheme()"
-        aria-label="${themeLabel()}"
-        data-tip="${themeLabel()}"
-      >
-        <span aria-hidden="true">${state.theme === "dark" ? "☼" : "☾"}</span>
-      </button>
-      <button
-        class="sound-orb ${state.soundEnabled ? "active" : ""}"
-        type="button"
-        onclick="toggleSoundNotifications()"
-        aria-label="Zapnutí zvukové notifikace při nějaké aktivitě v místnosti"
-        data-tip="Zapnutí zvukové notifikace při nějaké aktivitě v místnosti"
-      >
-        <span aria-hidden="true">♪</span>
-      </button>
+      <div class="topbar-icon-actions" aria-label="Rychlé volby">
+        <button
+          class="mode-orb"
+          type="button"
+          onclick="toggleTheme()"
+          aria-label="${themeLabel()}"
+          data-tip="${themeLabel()}"
+        >
+          <span aria-hidden="true">${state.theme === "dark" ? "☼" : "☾"}</span>
+        </button>
+        <button
+          class="sound-orb ${state.soundEnabled ? "active" : ""}"
+          type="button"
+          onclick="toggleSoundNotifications()"
+          aria-label="Zapnutí zvukové notifikace při nějaké aktivitě v místnosti"
+          data-tip="Zapnutí zvukové notifikace při nějaké aktivitě v místnosti"
+        >
+          <span aria-hidden="true">♪</span>
+        </button>
+      </div>
     </nav>
   `;
 }
