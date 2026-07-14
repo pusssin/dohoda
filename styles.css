@@ -4207,6 +4207,122 @@ form.private-main-composer .send-arrow,
     0 18px 42px rgba(73, 166, 181, 0.28);
 }
 
+/* Room page polish */
+.room-focus {
+  width: min(1180px, calc(100% - 44px));
+  gap: 20px;
+  padding: 28px 0 48px;
+}
+
+.back-link {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vision-glass-strong) 40%, transparent);
+  color: color-mix(in srgb, var(--ink) 72%, var(--future-accent));
+}
+
+.room-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  align-items: center;
+  gap: clamp(22px, 5vw, 72px);
+  padding: clamp(28px, 4vw, 44px);
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--future-accent) 10%, transparent), transparent 26rem),
+    radial-gradient(circle at 96% 12%, color-mix(in srgb, var(--future-accent-2) 9%, transparent), transparent 22rem),
+    color-mix(in srgb, var(--vision-glass) 70%, transparent);
+}
+
+:root:not([data-theme="dark"]) .room-hero {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(93, 131, 215, 0.09), transparent 26rem),
+    radial-gradient(circle at 96% 12%, rgba(105, 200, 189, 0.11), transparent 22rem),
+    rgba(247, 250, 252, 0.58);
+}
+
+.room-hero-copy {
+  gap: 12px;
+}
+
+.room-hero h1 {
+  max-width: 780px;
+  font-size: clamp(2.45rem, 4.15vw, 4.15rem);
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.room-hero .subtitle {
+  max-width: 640px;
+  font-size: clamp(0.96rem, 1.45vw, 1.08rem);
+  line-height: 1.5;
+}
+
+.room-kicker {
+  color: color-mix(in srgb, var(--future-accent-2) 64%, var(--ink));
+  letter-spacing: 0.11em;
+}
+
+:root:not([data-theme="dark"]) .room-kicker {
+  color: color-mix(in srgb, var(--red) 70%, #7c4760);
+}
+
+.room-hero .conflict-meter {
+  max-width: 520px;
+  margin-top: 14px;
+}
+
+.room-hero-actions {
+  justify-self: stretch;
+  align-self: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--vision-glass-strong) 72%, transparent), color-mix(in srgb, var(--vision-glass-soft) 62%, transparent));
+  box-shadow: 0 20px 60px color-mix(in srgb, #000 10%, transparent);
+}
+
+:root:not([data-theme="dark"]) .room-hero-actions {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(232, 244, 245, 0.48));
+  box-shadow: 0 18px 46px rgba(81, 105, 128, 0.1);
+}
+
+.participant-strip {
+  justify-items: end;
+  gap: 10px;
+}
+
+.invite-primary {
+  min-height: 54px;
+  border-radius: 999px;
+}
+
+.room-workspace {
+  gap: 18px;
+}
+
+@media (max-width: 860px) {
+  .room-focus {
+    width: min(100% - 24px, 1180px);
+  }
+
+  .room-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .room-hero h1 {
+    font-size: clamp(2.2rem, 11vw, 3.45rem);
+  }
+
+  .room-hero-actions,
+  .participant-strip {
+    justify-items: stretch;
+  }
+}
+
 @media (max-width: 760px) {
   .topbar {
     grid-template-columns: 1fr auto;

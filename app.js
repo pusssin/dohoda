@@ -441,7 +441,7 @@ function renderRoom() {
 
         <header class="room-hero">
           <div class="room-hero-copy">
-            <p class="room-kicker">Téma konfliktu</p>
+            <p class="room-kicker">Téma, které chcete vyřešit</p>
             <h1>${escapeHtml(room.title)}</h1>
             <p class="subtitle">${escapeHtml(room.goal)}</p>
             ${conflictMeter(room)}
