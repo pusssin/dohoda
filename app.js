@@ -690,6 +690,8 @@ function listTool(title, items) {
 function messageView(message) {
   const mine = message.me || message.author === state.sessionName;
   const parsed = parseDraftSuggestions(message.text);
+  const roleClass = message.ai ? "speaker-ai" : mine ? "speaker-me" : "speaker-other";
+  const accent = speakerAccent(message, mine);
   const label = message.mediatedFrom
     ? `Mediovaný přenos od ${message.mediatedFrom}`
     : message.activity
@@ -697,7 +699,7 @@ function messageView(message) {
       : message.author;
   const decision = message.decision ? `<small>${escapeHtml(message.decision)}</small>` : "";
   return `
-    <article class="message ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}">
+    <article class="message ${roleClass} ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""}" style="--speaker: ${accent};">
       <strong>${escapeHtml(label)}</strong>
       ${decision}
       <p>${escapeHtml(parsed.body || message.text)}</p>
@@ -713,6 +715,23 @@ function messageView(message) {
       ` : ""}
     </article>
   `;
+}
+
+function speakerAccent(message, mine) {
+  if (message.activity) return "var(--future-accent-2)";
+  if (message.mediatedFrom) return "var(--blue)";
+  if (message.ai) return "var(--future-accent)";
+  if (mine) return "var(--green)";
+  return colorFromName(message.author || "účastník");
+}
+
+function colorFromName(name) {
+  const palette = ["#4f78dd", "#35b9a7", "#9b7cf6", "#d06f8a", "#5f9fdb", "#6c9f72"];
+  let hash = 0;
+  String(name).split("").forEach((char) => {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  });
+  return palette[hash % palette.length];
 }
 
 function parseDraftSuggestions(text) {
@@ -775,6 +794,7 @@ function bindRoomEvents(room, inviteUrl) {
         adaptToRecipient: document.getElementById("adaptToRecipient").checked,
         crazyMode: document.getElementById("crazyMode").checked,
         initiatorMode: document.getElementById("initiatorMode").checked,
+        author: state.sessionName || activeProfile().name,
       };
       room.mediationSettings = payload;
       try {
@@ -902,7 +922,6 @@ function logoMark() {
       <svg viewBox="0 0 64 64" role="img">
         <circle class="ring ring-left" cx="25" cy="32" r="15" />
         <circle class="ring ring-right" cx="39" cy="32" r="15" />
-        <path class="link-core" d="M25 32h14" />
       </svg>
     </span>
   `;

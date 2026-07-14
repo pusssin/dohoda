@@ -305,10 +305,23 @@ async function handleApi(req, res, url) {
     }
 
     if (action === "settings") {
+      const previousSettings = sanitizeMediationSettings(room.mediationSettings || {});
       room.mediationSettings = sanitizeMediationSettings({
         ...room.mediationSettings,
         ...body,
       });
+      const author = String(body.author || body.participant || body.name || "").trim();
+      if (author && room.mediationSettings.initiatorMode && !previousSettings.initiatorMode) {
+        const conversation = ensurePrivateConversation(room, author);
+        conversation.push({
+          author: "AI mediátor",
+          text: initiatorKickoff(room, author),
+          ai: true,
+          activity: true,
+          decision: "Iniciátor zahájil aktivní krok",
+        });
+        addDiary(room, "AI mediátor", `${author} zapnul/a Iniciátora. Mediátor připravil první aktivující krok pro rozhýbání účastníků.`, "initiator");
+      }
     }
 
     if (action === "agreement") {
@@ -1074,6 +1087,26 @@ function withDraftVariants(settings, bodyLines, drafts) {
     "",
     "Návrhy formulace:",
     ...drafts.slice(0, count).map((draft, index) => `${index + 1}. ${draft}`),
+  ].join("\n");
+}
+
+function initiatorKickoff(room, author) {
+  const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  const others = room.participants.filter((name) => name !== author);
+  const targets = others.length ? others.join(", ") : "další účastníky";
+  const playful = settings.crazyMode
+    ? "Odlehčení: žádný dlouhý proslov, jen malý startér pozornosti."
+    : "Bez tlaku: stačí velmi malý vstup.";
+  return [
+    "Iniciátor zapnutý. Jdu to rozhýbat.",
+    playful,
+    `Téma pro ${targets}: co je jedna věc, kterou umíme uznat na pohledu druhé strany?`,
+    "Mikrokrok: pošlete ostatním jednu krátkou otázku, na kterou jde odpovědět do 30 sekund.",
+    "",
+    "Návrhy formulace:",
+    "1. Zkusme každý napsat jednu věc, kterou na pohledu druhé strany dokážeme uznat.",
+    "2. Neřešme teď celé drama. Dejme si jen 30 sekund: co je nejmenší společný krok?",
+    "3. Můžeme začít jednoduše: každý jednu větu, co potřebuje, a jednu větu, co nabízí.",
   ].join("\n");
 }
 

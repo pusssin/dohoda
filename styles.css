@@ -3002,8 +3002,7 @@ body {
   height: 29px;
 }
 
-.linked-logo .ring,
-.linked-logo .link-core {
+.linked-logo .ring {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -3020,11 +3019,6 @@ body {
 
 .linked-logo .ring-right {
   stroke: var(--future-accent-2);
-}
-
-.linked-logo .link-core {
-  stroke: color-mix(in srgb, var(--ink) 70%, var(--future-accent));
-  stroke-width: 4.2;
 }
 
 .entry-title .linked-logo {
@@ -3137,6 +3131,105 @@ form.private-main-composer .send-arrow,
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.message {
+  position: relative;
+  border-color: color-mix(in srgb, var(--speaker, var(--line)) 30%, var(--line));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.42) inset,
+    0 12px 34px color-mix(in srgb, var(--speaker, transparent) 7%, transparent);
+}
+
+.message::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--speaker, var(--line));
+  opacity: 0.88;
+}
+
+.message strong {
+  color: color-mix(in srgb, var(--speaker, var(--ink)) 64%, var(--ink));
+}
+
+.message.speaker-ai {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--speaker) 15%, transparent), transparent 68%),
+    color-mix(in srgb, var(--vision-glass-strong) 84%, var(--blue-soft));
+}
+
+.message.speaker-me {
+  margin-left: auto;
+  border-color: color-mix(in srgb, var(--speaker) 38%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--speaker) 17%, transparent), transparent 66%),
+    color-mix(in srgb, var(--vision-glass-strong) 84%, var(--green-soft));
+}
+
+.message.speaker-other {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--speaker) 13%, transparent), transparent 66%),
+    color-mix(in srgb, var(--vision-glass-strong) 88%, transparent);
+}
+
+.message.activity {
+  border-style: solid;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--speaker) 14%, transparent), transparent 70%),
+    color-mix(in srgb, var(--vision-glass-strong) 82%, transparent);
+}
+
+.toggle-line {
+  position: relative;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.toggle-line input[type="checkbox"] {
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 78%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--vision-glass-strong) 86%, transparent), color-mix(in srgb, var(--vision-glass-soft) 72%, transparent));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) inset;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.toggle-line input[type="checkbox"]::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 24%, #ffffff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.toggle-line input[type="checkbox"]:checked {
+  border-color: color-mix(in srgb, var(--future-accent-2) 54%, var(--line));
+  background: linear-gradient(135deg, var(--future-accent), var(--future-accent-2));
+}
+
+.toggle-line input[type="checkbox"]:checked::before {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+
+.toggle-line input[type="checkbox"]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--future-accent) 22%, transparent);
+  outline-offset: 2px;
 }
 
 .side-tools > summary {
