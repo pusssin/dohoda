@@ -510,6 +510,7 @@ function renderRoom() {
             </div>
           </aside>
         </div>
+        <button class="scroll-composer-btn" id="scrollToComposer" type="button" aria-label="Sjet dolů k psaní zprávy">↓</button>
       </div>
     </section>
     ${state.sourceDialogOpen ? sourceDialog(room) : ""}
@@ -1250,11 +1251,30 @@ function bindRoomEvents(room, inviteUrl) {
     });
   }
 
-  document.getElementById("draftAgreement").addEventListener("click", async () => {
-    await apiAction(`/api/rooms/${room.id}/agreement`, {});
-    state.activeTool = "agreement";
-    renderRoom();
-  });
+  const draftAgreement = document.getElementById("draftAgreement");
+  if (draftAgreement) {
+    draftAgreement.addEventListener("click", async () => {
+      setFormWaiting(draftAgreement, true, "Připravuji...");
+      try {
+        await apiAction(`/api/rooms/${room.id}/agreement`, {});
+        state.activeTool = "agreement";
+        state.advancedOpen = true;
+        addToast("Návrh dohody připraven");
+        renderRoom();
+      } catch (error) {
+        addToast(error.message || "Návrh dohody se nepovedlo připravit.");
+        setFormWaiting(draftAgreement, false);
+      }
+    });
+  }
+
+  const scrollToComposer = document.getElementById("scrollToComposer");
+  if (scrollToComposer && textarea) {
+    scrollToComposer.addEventListener("click", () => {
+      textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => textarea.focus(), 360);
+    });
+  }
 
   const summarize = document.getElementById("summarizeRoom");
   if (summarize) {
