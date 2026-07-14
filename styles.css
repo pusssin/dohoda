@@ -3284,9 +3284,15 @@ form.private-main-composer .send-arrow,
   color: color-mix(in srgb, var(--speaker, var(--ink)) 42%, var(--muted));
   font-size: 0.66rem;
   font-weight: 760;
-  line-height: 1;
+  line-height: 0;
   cursor: pointer;
   opacity: 0.78;
+}
+
+.message-collapse-btn span {
+  display: block;
+  line-height: 1;
+  transform: translateY(-0.5px);
 }
 
 .message-collapse-btn:hover {

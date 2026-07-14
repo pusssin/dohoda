@@ -749,7 +749,7 @@ function privateConversation(room) {
     {
       author: "AI mediátor",
       text:
-        "Toto je váš soukromý prostor. Popište mi svůj pohled a pomůžu vám najít formulaci, která nezvyšuje napětí.",
+        "Vítejte v místnosti. Začněme jednoduše: napište jednou větou, co by se podle vás mělo změnit, aby dohoda dávala smysl.",
       ai: true,
     },
   ];
@@ -762,7 +762,7 @@ function ensureClientPrivateConversation(room, author) {
       {
         author: "AI mediátor",
         text:
-          "Toto je váš soukromý prostor. Popište mi svůj pohled a pomůžu vám najít formulaci, která nezvyšuje napětí.",
+          "Vítejte v místnosti. Začněme jednoduše: napište jednou větou, co by se podle vás mělo změnit, aby dohoda dávala smysl.",
         ai: true,
       },
     ];
@@ -1050,7 +1050,7 @@ function messageView(message, index = 0) {
     <article class="message ${roleClass} ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""} ${collapsed ? "collapsed" : ""}" style="--speaker: ${accent};">
       <div class="message-head">
         <strong>${escapeHtml(label)}</strong>
-        <button class="message-collapse-btn" type="button" data-toggle-message="${escapeHtml(collapseKey)}" aria-label="${collapsed ? "Rozbalit zprávu" : "Sbalit zprávu"}">${collapsed ? "+" : "−"}</button>
+        <button class="message-collapse-btn" type="button" data-toggle-message="${escapeHtml(collapseKey)}" aria-label="${collapsed ? "Rozbalit zprávu" : "Sbalit zprávu"}"><span>${collapsed ? "+" : "−"}</span></button>
       </div>
       ${decision}
       <p>${escapeHtml(parsed.body || message.text)}</p>

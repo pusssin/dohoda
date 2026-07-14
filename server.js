@@ -278,7 +278,7 @@ async function handleApi(req, res, url) {
           {
             author: "AI mediátor",
             text:
-              "Místnost je založená. Tady můžete popsat svůj pohled. Mediátor ostatním předá jen bezpečnější a srozumitelnější verzi toho, co je potřeba sdělit.",
+              "Místnost je založená. Začněme krátce: napište jednou větou, co by se mělo změnit, aby pro vás dohoda dávala smysl. Já z toho vytáhnu podstatu a navrhnu další krok.",
             ai: true,
           },
         ],
@@ -1353,7 +1353,7 @@ function ensurePrivateConversation(room, author) {
       {
         author: "AI mediátor",
         text:
-          "Toto je váš soukromý prostor s AI mediátorem. Pomůžu vám pojmenovat potřeby, porozumět druhé straně a připravit bezpečnou formulaci pro případné sdílení.",
+          "Vítejte v místnosti. Začněme jednoduše: napište jednou větou, co by se podle vás mělo změnit, aby dohoda dávala smysl. Já z toho vytáhnu podstatu a navrhnu další krok.",
         ai: true,
       },
     ];
@@ -1864,7 +1864,7 @@ function newcomerBriefing(room, participant) {
     `Co zatím víme: ${shared}.`,
     `Otevřené body: ${open}.`,
     `Potřeby v mapě: ${needs}.`,
-    "Můžete začít jednou větou: co je pro vás v téhle dohodě nejdůležitější, aby měla smysl?",
+    "První krok: napište jednu větu ve tvaru „Potřebuji, aby...“. Nemusí být dokonalá. Já ji zklidním, zpřesním a navrhnu, co z ní má slyšet druhá strana.",
   ].join("\n");
 }
 
