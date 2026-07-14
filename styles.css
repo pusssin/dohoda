@@ -3924,7 +3924,7 @@ form.private-main-composer .send-arrow,
 /* Final override: tiny mediation toggle dots */
 .mediation-settings .compact-toggle {
   grid-template-columns: 10px minmax(0, 1fr) auto;
-  column-gap: 10px;
+  column-gap: 18px;
   font-size: 0.7em;
 }
 
