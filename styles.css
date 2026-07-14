@@ -4188,6 +4188,25 @@ form.private-main-composer .send-arrow,
   background: transparent;
 }
 
+:root:not([data-theme="dark"]) .agreement-detail .primary-btn {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08)),
+    linear-gradient(135deg, #8eeeff 0%, #72f2d7 58%, #b9ffef 100%);
+  color: #071822;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.62) inset,
+    0 0 22px rgba(114, 242, 215, 0.44),
+    0 14px 34px rgba(73, 166, 181, 0.24);
+}
+
+:root:not([data-theme="dark"]) .agreement-detail .primary-btn:hover {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.76) inset,
+    0 0 28px rgba(114, 242, 215, 0.58),
+    0 18px 42px rgba(73, 166, 181, 0.28);
+}
+
 @media (max-width: 760px) {
   .topbar {
     grid-template-columns: 1fr auto;
