@@ -3751,9 +3751,8 @@ form.private-main-composer .send-arrow,
 
 .admin-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(360px, 31vw, 470px);
-  gap: 18px;
-  align-items: start;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
 .admin-table {
@@ -3771,8 +3770,8 @@ form.private-main-composer .send-arrow,
 }
 
 .admin-detail {
-  position: sticky;
-  top: 84px;
+  position: static;
+  margin-top: 18px;
   width: 100%;
   min-width: 0;
   z-index: 0;
@@ -3793,6 +3792,18 @@ form.private-main-composer .send-arrow,
   .admin-detail {
     position: static;
   }
+}
+
+.icon-btn,
+.send-arrow,
+form.private-main-composer .icon-btn,
+form.private-main-composer .send-arrow,
+.private-main-composer .primary-btn.send-arrow,
+.speak-btn {
+  width: 23px;
+  min-width: 23px;
+  height: 23px;
+  min-height: 23px;
 }
 
 .toggle-line input[type="checkbox"],
@@ -3834,10 +3845,10 @@ form.private-main-composer .send-arrow,
 
 .voice-input-btn,
 form.private-main-composer .voice-input-btn {
-  width: 27px;
-  min-width: 27px;
-  height: 27px;
-  min-height: 27px;
+  width: 23px;
+  min-width: 23px;
+  height: 23px;
+  min-height: 23px;
   border: 1px solid color-mix(in srgb, #e34b55 54%, var(--line));
   border-radius: 999px;
   background:
@@ -3847,6 +3858,55 @@ form.private-main-composer .voice-input-btn {
     0 8px 20px color-mix(in srgb, #e34b55 20%, transparent);
   color: transparent;
   font-size: 0;
+}
+
+.add-source-btn {
+  color: var(--future-accent);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.danger-btn {
+  border-color: color-mix(in srgb, #d65f6c 32%, var(--line));
+  color: color-mix(in srgb, #d65f6c 84%, var(--ink));
+  background: color-mix(in srgb, #d65f6c 8%, var(--vision-glass-strong));
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, #07101b 34%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.source-dialog {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 18px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--vision-glass-strong));
+  box-shadow: var(--shadow);
+}
+
+.diary-note-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.protocol-card pre {
+  overflow: auto;
+  white-space: pre-wrap;
+  margin: 0;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1.5;
 }
 
 .voice-input-btn.is-listening {

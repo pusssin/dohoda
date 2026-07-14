@@ -16,6 +16,8 @@ const state = {
   authError: "",
   googleConfigured: false,
   voiceAutoRead: localStorage.getItem("dohoda.voiceAutoRead") === "1",
+  handsFreeMode: localStorage.getItem("dohoda.handsFreeMode") === "1",
+  sourceDialogOpen: false,
   voiceListening: false,
   speechRecognition: null,
   mediaRecorder: null,
@@ -468,6 +470,10 @@ function renderRoom() {
                   <input id="voiceAutoRead" type="checkbox" ${state.voiceAutoRead ? "checked" : ""} />
                   <span>Číst AI</span>
                 </label>
+                <label class="voice-auto-toggle" title="Po odpovědi AI ji přečte a zkusí automaticky nahrát další krátkou odpověď.">
+                  <input id="handsFreeMode" type="checkbox" ${state.handsFreeMode ? "checked" : ""} />
+                  <span>Bezdotykově</span>
+                </label>
                 <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
               </div>
             </div>
@@ -479,11 +485,13 @@ function renderRoom() {
                 <textarea id="privateMediatorText" rows="4" placeholder="Napište stručně, co se má posunout. Enter odešle, Shift+Enter vloží nový řádek."></textarea>
                 <div class="composer-tools" aria-label="Ovládání zprávy">
                   <button id="clearDraft" class="icon-btn" type="button" title="Smazat rozepsaný text">×</button>
+                  <button id="openSourceDialog" class="icon-btn add-source-btn" type="button" title="Přidat zdroj" aria-label="Přidat zdroj">+</button>
                   <button id="voiceInput" class="icon-btn voice-input-btn" type="button" title="Nadiktovat zprávu" aria-label="Nadiktovat zprávu"></button>
                   <button class="primary-btn send-arrow" type="submit" title="Poslat zprávu" aria-label="Poslat zprávu">→</button>
                 </div>
               </div>
             </form>
+            ${state.sourceDialogOpen ? sourceDialog(room) : ""}
             <details class="side-tools chat-tools" ${state.advancedOpen ? "open" : ""}>
               <summary>Analýza a dohoda</summary>
               <div class="drawer-actions">
@@ -577,8 +585,8 @@ function renderAdmin() {
           <div class="admin-table">
             ${filteredRooms.length ? filteredRooms.map((room) => adminRoomRow(room)).join("") : `<div class="empty">Žádná místnost v tomto filtru.</div>`}
           </div>
-          ${selectedRoom ? adminRoomDetail(selectedRoom) : ""}
         </div>
+        ${selectedRoom ? adminRoomDetail(selectedRoom) : ""}
       </section>
     </section>
   `;
@@ -600,6 +608,7 @@ function renderAdmin() {
   });
   document.querySelectorAll("[data-admin-action]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (button.dataset.adminAction === "delete-room" && !confirm("Opravdu smazat tuto místnost? Tato akce je nevratná.")) return;
       await apiAction(`/api/rooms/${button.dataset.adminRoom}/${button.dataset.adminAction}`, {
         author: state.sessionName || activeProfile().name,
       });
@@ -676,6 +685,7 @@ function adminRoomDetail(room) {
       <div class="admin-actions">
         <button class="primary-btn" type="button" data-admin-open-room="${room.id}">Otevřít místnost</button>
         <button class="secondary-btn" type="button" data-admin-action="${room.archived ? "restore" : "archive"}" data-admin-room="${room.id}">${room.archived ? "Vrátit z archivu" : "Archivovat"}</button>
+        <button class="secondary-btn danger-btn" type="button" data-admin-action="delete-room" data-admin-room="${room.id}">Smazat místnost</button>
       </div>
     </aside>
   `;
@@ -859,6 +869,10 @@ function toolContent(room) {
       <div class="tool-card mediation-diary">
         <h3>Deník místnosti</h3>
         <p class="meta">Neutrální stopa toho, co se v mediaci děje. Neobsahuje cizí soukromé texty.</p>
+        <form id="diaryNoteForm" class="diary-note-form">
+          <textarea id="diaryNoteText" rows="3" placeholder="Přidat vlastní zápis do deníku"></textarea>
+          <button class="secondary-btn" type="submit">Přidat zápis</button>
+        </form>
         <div class="diary-list">
           ${diary.length ? diary.map((item) => `
             <article class="diary-item ${escapeHtml(item.type || "note")}">
@@ -867,6 +881,10 @@ function toolContent(room) {
             </article>
           `).join("") : `<p class="meta">Deník zatím čeká na první vstupy.</p>`}
         </div>
+      </div>
+      <div class="tool-card protocol-card">
+        <h3>Průběžný protokol</h3>
+        <pre>${escapeHtml(room.protocol || "")}</pre>
       </div>
     `;
   }
@@ -892,34 +910,8 @@ function toolContent(room) {
       <div class="tool-card sources-tool">
         <h3>Zdroje místnosti</h3>
         <p class="meta">Přidejte text, odkaz, audio nebo soubor do 50 MB. AI z nich vytáhne fakta, potřeby a otázky pro dohodu.</p>
-        <form id="sourceForm" class="source-form">
-          <label>
-            Typ zdroje
-            <select id="sourceKind">
-              <option value="text">Text</option>
-              <option value="link">Odkaz</option>
-              <option value="file">Soubor</option>
-              <option value="audio">Audio</option>
-            </select>
-          </label>
-          <label>
-            Název
-            <input id="sourceTitle" type="text" placeholder="Např. hlasová poznámka, e-mail, smlouva..." />
-          </label>
-          <label class="source-text-field">
-            Text
-            <textarea id="sourceText" rows="4" placeholder="Vložte text nebo stručný popis zdroje."></textarea>
-          </label>
-          <label class="source-url-field">
-            Odkaz
-            <input id="sourceUrl" type="url" placeholder="https://..." />
-          </label>
-          <label class="source-file-field">
-            Soubor do 50 MB
-            <input id="sourceFile" type="file" />
-          </label>
-          <button class="secondary-btn" type="submit">Přidat zdroj</button>
-        </form>
+        <p class="meta">${sourceUsageText(room)}</p>
+        ${sourceForm("source")}
       </div>
       <div class="source-list">
         ${sources.length ? sources.map(sourceView).join("") : `<div class="empty">Zdroje zatím nejsou přidané.</div>`}
@@ -955,6 +947,63 @@ function toolContent(room) {
   `;
 }
 
+function sourceForm(prefix) {
+  return `
+    <form id="${prefix}Form" class="source-form" data-source-prefix="${prefix}">
+      <label>
+        Typ zdroje
+        <select id="${prefix}Kind">
+          <option value="text">Text</option>
+          <option value="link">Odkaz</option>
+          <option value="file">Soubor</option>
+          <option value="audio">Audio</option>
+          <option value="image">Obrázek</option>
+        </select>
+      </label>
+      <label>
+        Název
+        <input id="${prefix}Title" type="text" placeholder="Např. hlasová poznámka, e-mail, smlouva..." />
+      </label>
+      <label class="${prefix}-text-field source-text-field">
+        Text
+        <textarea id="${prefix}Text" rows="4" placeholder="Vložte text nebo stručný popis zdroje."></textarea>
+      </label>
+      <label class="${prefix}-url-field source-url-field">
+        Odkaz
+        <input id="${prefix}Url" type="url" placeholder="https://..." />
+      </label>
+      <label class="${prefix}-file-field source-file-field">
+        Soubor do 50 MB
+        <input id="${prefix}File" type="file" accept="audio/*,image/*,.txt,.md,.csv,.json,.html,.xml,.rtf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
+      </label>
+      <button class="secondary-btn" type="submit">Přidat zdroj</button>
+    </form>
+  `;
+}
+
+function sourceDialog(room) {
+  return `
+    <div class="modal-backdrop">
+      <section class="source-dialog" role="dialog" aria-modal="true" aria-label="Přidat zdroj">
+        <div class="source-head">
+          <div>
+            <h3>Přidat zdroj do místnosti</h3>
+            <p class="meta">${sourceUsageText(room)}</p>
+          </div>
+          <button id="closeSourceDialog" class="icon-btn" type="button" aria-label="Zavřít">×</button>
+        </div>
+        ${sourceForm("chatSource")}
+      </section>
+    </div>
+  `;
+}
+
+function sourceUsageText(room) {
+  const used = Math.round((room.sourceBytes || 0) / 1024 / 1024);
+  const limit = Math.round((room.sourceLimit || 500 * 1024 * 1024) / 1024 / 1024);
+  return `Limit: jeden zdroj 50 MB, celá místnost ${limit} MB. Využito přibližně ${used} MB.`;
+}
+
 function sourceView(source) {
   const size = source.size ? `${Math.round(source.size / 1024)} kB` : "";
   const status = source.status || "Uloženo";
@@ -966,6 +1015,7 @@ function sourceView(source) {
           <p class="meta">${escapeHtml(source.kind || "zdroj")}${source.mime ? ` · ${escapeHtml(source.mime)}` : ""}${size ? ` · ${size}` : ""} · ${escapeHtml(status)}</p>
         </div>
         <button class="secondary-btn" type="button" data-analyze-source="${source.id}">Analyzovat AI</button>
+        <button class="secondary-btn danger-btn" type="button" data-delete-source="${source.id}">Smazat</button>
       </div>
       ${source.url ? `<a class="source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.url)}</a>` : ""}
       ${source.excerpt ? `<p>${escapeHtml(source.excerpt)}</p>` : `<p class="meta">Soubor je uložený jako podklad. U netextových souborů bude analýza záviset na tom, zda z nich umíme získat text nebo přepis.</p>`}
@@ -1133,8 +1183,9 @@ function bindRoomEvents(room, inviteUrl) {
         author,
         text,
       });
-      if (state.voiceAutoRead) speakLatestMediatorReply(result.room, author);
       renderRoom();
+      if (state.handsFreeMode) setTimeout(() => handleHandsFreeReply(result.room, author), 120);
+      else if (state.voiceAutoRead) speakLatestMediatorReply(result.room, author);
     } catch (error) {
       await loadRemoteState();
       renderRoom();
@@ -1158,6 +1209,8 @@ function bindRoomEvents(room, inviteUrl) {
   const clearDraft = document.getElementById("clearDraft");
   const voiceInput = document.getElementById("voiceInput");
   const voiceAutoRead = document.getElementById("voiceAutoRead");
+  const handsFreeMode = document.getElementById("handsFreeMode");
+  const openSourceDialog = document.getElementById("openSourceDialog");
   if (clearDraft && textarea) {
     clearDraft.addEventListener("click", () => {
       textarea.value = "";
@@ -1183,6 +1236,32 @@ function bindRoomEvents(room, inviteUrl) {
     });
   }
 
+  if (handsFreeMode) {
+    handsFreeMode.addEventListener("change", () => {
+      state.handsFreeMode = handsFreeMode.checked;
+      if (state.handsFreeMode) state.voiceAutoRead = true;
+      localStorage.setItem("dohoda.handsFreeMode", state.handsFreeMode ? "1" : "0");
+      localStorage.setItem("dohoda.voiceAutoRead", state.voiceAutoRead ? "1" : "0");
+      addToast(state.handsFreeMode ? "Bezdotykový režim zapnut" : "Bezdotykový režim vypnut");
+      renderRoom();
+    });
+  }
+
+  if (openSourceDialog) {
+    openSourceDialog.addEventListener("click", () => {
+      state.sourceDialogOpen = true;
+      renderRoom();
+    });
+  }
+
+  const closeSourceDialog = document.getElementById("closeSourceDialog");
+  if (closeSourceDialog) {
+    closeSourceDialog.addEventListener("click", () => {
+      state.sourceDialogOpen = false;
+      renderRoom();
+    });
+  }
+
   document.querySelectorAll("[data-speak]").forEach((button) => {
     button.addEventListener("click", () => speakText(button.dataset.speak || ""));
   });
@@ -1202,42 +1281,13 @@ function bindRoomEvents(room, inviteUrl) {
   }
 
   bindSourceEvents(room);
+  bindDiaryEvents(room);
 
 }
 
-function bindSourceEvents(room) {
-  const form = document.getElementById("sourceForm");
-  if (!form) return;
-  const kind = document.getElementById("sourceKind");
-  const syncFields = () => {
-    const value = kind.value;
-    document.querySelector(".source-text-field").hidden = value !== "text";
-    document.querySelector(".source-url-field").hidden = value !== "link";
-    document.querySelector(".source-file-field").hidden = !["file", "audio"].includes(value);
-  };
-  kind.addEventListener("change", syncFields);
-  syncFields();
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = form.querySelector('button[type="submit"]');
-    setFormWaiting(button, true, "Přidávám...");
-    state.requestInProgress = true;
-    try {
-      const payload = await buildSourcePayload();
-      const result = await apiAction(`/api/rooms/${room.id}/add-source`, payload);
-      state.rooms = result.store.rooms;
-      state.activeTool = "sources";
-      addToast("Zdroj přidán");
-      renderRoom();
-    } catch (error) {
-      addToast(error.message || "Zdroj se nepovedlo přidat.");
-    } finally {
-      state.requestInProgress = false;
-      setFormWaiting(button, false);
-    }
-  });
-
+function bindSourceEvents(room, prefix = "source") {
+  bindOneSourceForm(room, "source");
+  bindOneSourceForm(room, "chatSource");
   document.querySelectorAll("[data-analyze-source]").forEach((button) => {
     button.addEventListener("click", async () => {
       setFormWaiting(button, true, "Analyzuji...");
@@ -1256,11 +1306,58 @@ function bindSourceEvents(room) {
       }
     });
   });
+
+  document.querySelectorAll("[data-delete-source]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirm("Smazat tento zdroj z místnosti?")) return;
+      await apiAction(`/api/rooms/${room.id}/delete-source`, {
+        sourceId: button.dataset.deleteSource,
+      });
+      state.activeTool = "sources";
+      renderRoom();
+      addToast("Zdroj smazán");
+    });
+  });
 }
 
-async function buildSourcePayload() {
-  const kind = document.getElementById("sourceKind").value;
-  const title = document.getElementById("sourceTitle").value.trim();
+function bindOneSourceForm(room, prefix) {
+  const form = document.getElementById(`${prefix}Form`);
+  if (!form) return;
+  const kind = document.getElementById(`${prefix}Kind`);
+  const syncFields = () => {
+    const value = kind.value;
+    document.querySelector(`.${prefix}-text-field`).hidden = value !== "text";
+    document.querySelector(`.${prefix}-url-field`).hidden = value !== "link";
+    document.querySelector(`.${prefix}-file-field`).hidden = !["file", "audio", "image"].includes(value);
+  };
+  kind.addEventListener("change", syncFields);
+  syncFields();
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    setFormWaiting(button, true, "Přidávám...");
+    state.requestInProgress = true;
+    try {
+      const payload = await buildSourcePayload(prefix);
+      const result = await apiAction(`/api/rooms/${room.id}/add-source`, payload);
+      state.rooms = result.store.rooms;
+      state.activeTool = "sources";
+      state.sourceDialogOpen = false;
+      addToast("Zdroj přidán");
+      renderRoom();
+    } catch (error) {
+      addToast(error.message || "Zdroj se nepovedlo přidat.");
+    } finally {
+      state.requestInProgress = false;
+      setFormWaiting(button, false);
+    }
+  });
+}
+
+async function buildSourcePayload(prefix = "source") {
+  const kind = document.getElementById(`${prefix}Kind`).value;
+  const title = document.getElementById(`${prefix}Title`).value.trim();
   const payload = {
     kind,
     title,
@@ -1268,7 +1365,7 @@ async function buildSourcePayload() {
   };
 
   if (kind === "text") {
-    payload.extractedText = document.getElementById("sourceText").value.trim();
+    payload.extractedText = document.getElementById(`${prefix}Text`).value.trim();
     if (!payload.extractedText) throw new Error("Vložte text zdroje.");
     payload.size = new Blob([payload.extractedText]).size;
     payload.title = payload.title || "Textový zdroj";
@@ -1276,18 +1373,22 @@ async function buildSourcePayload() {
   }
 
   if (kind === "link") {
-    payload.url = document.getElementById("sourceUrl").value.trim();
+    payload.url = document.getElementById(`${prefix}Url`).value.trim();
     if (!payload.url) throw new Error("Vložte odkaz.");
-    payload.extractedText = document.getElementById("sourceText")?.value.trim() || "";
+    payload.extractedText = document.getElementById(`${prefix}Text`)?.value.trim() || "";
     payload.title = payload.title || payload.url;
     return payload;
   }
 
-  const file = document.getElementById("sourceFile").files[0];
+  const file = document.getElementById(`${prefix}File`).files[0];
   if (!file) throw new Error("Vyberte soubor.");
   if (file.size > maxSourceBytes) throw new Error("Soubor je větší než 50 MB.");
   const textLike = file.type.startsWith("text/") || /\.(txt|md|csv|json|html|xml|rtf)$/i.test(file.name);
-  payload.kind = kind === "audio" || file.type.startsWith("audio/") ? "audio" : "file";
+  payload.kind = kind === "audio" || file.type.startsWith("audio/")
+    ? "audio"
+    : kind === "image" || file.type.startsWith("image/")
+      ? "image"
+      : "file";
   payload.title = payload.title || file.name;
   payload.fileName = file.name;
   payload.mime = file.type || "application/octet-stream";
@@ -1295,6 +1396,20 @@ async function buildSourcePayload() {
   payload.dataUrl = await readFileAsDataUrl(file);
   if (textLike) payload.extractedText = await readFileAsText(file);
   return payload;
+}
+
+function bindDiaryEvents(room) {
+  const form = document.getElementById("diaryNoteForm");
+  if (!form) return;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = document.getElementById("diaryNoteText").value.trim();
+    if (!text) return;
+    await apiAction(`/api/rooms/${room.id}/add-diary-note`, { text });
+    state.activeTool = "diary";
+    renderRoom();
+    addToast("Zápis přidán");
+  });
 }
 
 function readFileAsDataUrl(file) {
@@ -1480,7 +1595,7 @@ function rgb(parts) {
   return `rgb(${parts[0]}, ${parts[1]}, ${parts[2]})`;
 }
 
-async function startVoiceInput(textarea, button) {
+async function startVoiceInput(textarea, button, options = {}) {
   if (state.mediaRecorder && state.voiceListening) {
     state.mediaRecorder.stop();
     return;
@@ -1505,7 +1620,7 @@ async function startVoiceInput(textarea, button) {
     state.voiceListening = true;
     button.classList.add("is-listening");
     button.disabled = false;
-    addToast("Nahrávám... kliknutím zastavíte.");
+    addToast(options.autoStopMs ? "Bezdotykově nahrávám..." : "Nahrávám... kliknutím zastavíte.");
 
     recorder.ondataavailable = (event) => {
       if (event.data?.size) state.voiceChunks.push(event.data);
@@ -1555,6 +1670,9 @@ async function startVoiceInput(textarea, button) {
         textarea.value = [textarea.value.trim(), transcript].filter(Boolean).join(textarea.value.trim() ? " " : "");
         textarea.focus();
         addToast("Přepis vložen do zprávy");
+        if (options.autoSubmit) {
+          setTimeout(() => document.getElementById("privateMediatorForm")?.requestSubmit(), 500);
+        }
       } catch (error) {
         addToast(error.message || "Přepis se nepovedl.");
       } finally {
@@ -1563,6 +1681,11 @@ async function startVoiceInput(textarea, button) {
     };
 
     recorder.start();
+    if (options.autoStopMs) {
+      setTimeout(() => {
+        if (state.mediaRecorder === recorder && state.voiceListening) recorder.stop();
+      }, options.autoStopMs);
+    }
   } catch (error) {
     state.voiceListening = false;
     button.classList.remove("is-listening");
@@ -1584,7 +1707,7 @@ function blobToDataUrl(blob) {
   });
 }
 
-function speakText(text) {
+function speakText(text, onEnd) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
   if (!clean) return;
   if (!("speechSynthesis" in window)) {
@@ -1596,6 +1719,9 @@ function speakText(text) {
   utterance.lang = "cs-CZ";
   utterance.rate = 1;
   utterance.pitch = 1;
+  utterance.onend = () => {
+    if (typeof onEnd === "function") onEnd();
+  };
   window.speechSynthesis.speak(utterance);
 }
 
@@ -1603,6 +1729,19 @@ function speakLatestMediatorReply(room, author) {
   const conversation = room?.privateConversations?.[author] || [];
   const latest = [...conversation].reverse().find((message) => message.ai && !message.pending);
   if (latest?.text) speakText(parseDraftSuggestions(latest.text).body || latest.text);
+}
+
+function handleHandsFreeReply(room, author) {
+  const conversation = room?.privateConversations?.[author] || [];
+  const latest = [...conversation].reverse().find((message) => message.ai && !message.pending);
+  const text = latest?.text ? parseDraftSuggestions(latest.text).body || latest.text : "";
+  const textarea = document.getElementById("privateMediatorText");
+  const button = document.getElementById("voiceInput");
+  if (!textarea || !button) return;
+  speakText(text, () => {
+    if (!state.handsFreeMode) return;
+    startVoiceInput(textarea, button, { autoStopMs: 9000, autoSubmit: true });
+  });
 }
 
 function makeAgreement(room) {

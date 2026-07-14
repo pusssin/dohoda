@@ -30,6 +30,7 @@ const defaultMediationSettings = {
 };
 
 const maxSourceBytes = 50 * 1024 * 1024;
+const maxRoomSourceBytes = 500 * 1024 * 1024;
 
 const styleInstructions = {
   warm:
@@ -99,6 +100,7 @@ const store = {
         needs: ["Anna: jasné hranice role a pravidla komunikace."],
       },
       sources: [],
+      protocol: "",
       diary: [
         {
           author: "AI mediátor",
@@ -145,6 +147,7 @@ const store = {
         needs: ["Anna: předvídatelnost."],
       },
       sources: [],
+      protocol: "",
       diary: [
         {
           author: "AI mediátor",
@@ -296,6 +299,7 @@ async function handleApi(req, res, url) {
         needs: ["Zakladatel chce strukturovaný proces."],
       },
       sources: [],
+      protocol: "",
       diary: [
         {
           author: "AI mediátor",
@@ -416,6 +420,15 @@ async function handleApi(req, res, url) {
       addDiary(room, "AI mediátor", "Mapa dohody byla aktualizována: shoda, otevřené body a potřeby jsou připravené k další kontrole.", "analysis");
     }
 
+    if (action === "add-diary-note") {
+      const text = String(body.text || "").trim();
+      if (!text) {
+        sendJson(res, 400, { error: "Text zápisu je prázdný." });
+        return;
+      }
+      addDiary(room, currentUser.name, text.slice(0, 2000), "manual");
+    }
+
     if (action === "add-source") {
       const source = sanitizeSource(body);
       if (source.size > maxSourceBytes) {
@@ -423,6 +436,12 @@ async function handleApi(req, res, url) {
         return;
       }
       ensureRoomDefaults(room);
+      if (roomSourceBytes(room) + source.size > maxRoomSourceBytes) {
+        sendJson(res, 413, { error: "Zdroje v této místnosti přesáhly limit 500 MB." });
+        return;
+      }
+      source.addedBy = currentUser.name;
+      source.addedById = currentUser.id;
       room.sources.unshift(source);
       room.sources = room.sources.slice(0, 40);
       addDiary(room, currentUser.name, `Přidal/a zdroj: ${source.title}.`, "source");
@@ -448,6 +467,31 @@ async function handleApi(req, res, url) {
       source.status = source.analysis ? "Analyzováno" : source.status || "Uloženo";
       applySourceAnalysis(room, source);
       addDiary(room, "AI mediátor", `Zdroj „${source.title}“ byl přečten a promítnut do mapy dohody.`, "source-analysis");
+    }
+
+    if (action === "delete-source") {
+      const source = room.sources?.find((item) => item.id === body.sourceId);
+      if (!source) {
+        sendJson(res, 404, { error: "Zdroj nebyl nalezen." });
+        return;
+      }
+      if (!canDeleteSource(currentUser, room, source)) {
+        sendJson(res, 403, { error: "Smazat zdroj může autor zdroje nebo admin." });
+        return;
+      }
+      room.sources = room.sources.filter((item) => item.id !== source.id);
+      addDiary(room, currentUser.name, `Smazal/a zdroj: ${source.title}.`, "source-delete");
+    }
+
+    if (action === "delete-room") {
+      if (!canManageRoom(currentUser, room)) {
+        sendJson(res, 403, { error: "K této akci nemáte oprávnění." });
+        return;
+      }
+      store.rooms = store.rooms.filter((item) => item.id !== room.id);
+      await savePersistentStore();
+      sendJson(res, 200, { store: publicStoreFor(currentUser.name, currentUser), authUser: publicUser(currentUser) });
+      return;
     }
 
     if (action === "archive") {
@@ -846,6 +890,7 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.map.open)) room.map.open = [];
   if (!Array.isArray(room.map.needs)) room.map.needs = [];
   if (!Array.isArray(room.sources)) room.sources = [];
+  if (typeof room.protocol !== "string") room.protocol = "";
 }
 
 function publicStoreFor(viewer = "", user = null) {
@@ -870,6 +915,9 @@ function publicRoomFor(room, viewer = "") {
   }
   safeRoom.privateConversations = privateConversations;
   safeRoom.sources = room.sources.map(publicSource);
+  safeRoom.sourceBytes = roomSourceBytes(room);
+  safeRoom.sourceLimit = maxRoomSourceBytes;
+  safeRoom.protocol = generateProtocol(room);
   return safeRoom;
 }
 
@@ -889,6 +937,10 @@ function publicSource(source) {
     addedBy: source.addedBy || "",
     addedAt: source.addedAt || "",
   };
+}
+
+function roomSourceBytes(room) {
+  return (room.sources || []).reduce((sum, source) => sum + Number(source.size || 0), 0);
 }
 
 function publicUser(user) {
@@ -914,6 +966,14 @@ function canManageRoom(user, room) {
   if (!user) return false;
   if (user.admin) return true;
   return Boolean(room.ownerId && room.ownerId === user.id);
+}
+
+function canDeleteSource(user, room, source) {
+  if (!user) return false;
+  if (user.admin) return true;
+  if (source.addedById && source.addedById === user.id) return true;
+  if (source.addedBy && source.addedBy === user.name) return true;
+  return canManageRoom(user, room);
 }
 
 function shouldBeAdmin(email) {
@@ -952,6 +1012,7 @@ function addDiary(room, author, text, type = "note") {
     at: new Date().toISOString(),
   });
   room.diary = room.diary.slice(-80);
+  room.protocol = generateProtocol(room);
 }
 
 function randomToken() {
@@ -1040,7 +1101,7 @@ function baseUrl(req) {
 }
 
 function sanitizeSource(body) {
-  const kind = ["text", "link", "file", "audio"].includes(body.kind) ? body.kind : "file";
+  const kind = ["text", "link", "file", "audio", "image"].includes(body.kind) ? body.kind : "file";
   const extractedText = String(body.extractedText || "").slice(0, 180_000);
   return {
     id: `source-${Date.now().toString(36)}-${randomToken()}`,
@@ -1091,6 +1152,7 @@ async function analyzeSource(room, source) {
     if (source.extractedText) source.status = "Přečteno";
   }
   const sourceText = source.extractedText || source.url || source.note || source.title;
+  if (source.kind === "image" && source.dataUrl && openaiApiKey) return analyzeImageSource(room, source);
   if (!sourceText) return "Zdroj byl uložen, ale zatím z něj není čitelný text pro analýzu.";
   if (!openaiApiKey) return fallbackSourceAnalysis(source);
   try {
@@ -1120,6 +1182,34 @@ async function analyzeSource(room, source) {
     return extractResponseText(response) || fallbackSourceAnalysis(source);
   } catch (error) {
     console.warn("OpenAI source analysis fallback:", error.message);
+    return fallbackSourceAnalysis(source);
+  }
+}
+
+async function analyzeImageSource(room, source) {
+  try {
+    const payload = {
+      model: openaiModel,
+      input: [
+        {
+          role: "system",
+          content:
+            "Jsi AI mediátor v aplikaci Dohoda. Popiš obrázek jako podklad ke konfliktu neutrálně: fakta z obrázku, možné potřeby/obavy, otázky k ověření a co může pomoci dohodě. Česky, stručně.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: `Téma místnosti: ${room.title}\nZdroj: ${source.title}` },
+            { type: "input_image", image_url: source.dataUrl },
+          ],
+        },
+      ],
+      max_output_tokens: 520,
+    };
+    const response = await openaiResponsesRequest(payload, 18000);
+    return extractResponseText(response) || fallbackSourceAnalysis(source);
+  } catch (error) {
+    console.warn("OpenAI image analysis fallback:", error.message);
     return fallbackSourceAnalysis(source);
   }
 }
@@ -1173,6 +1263,35 @@ function applySourceAnalysis(room, source) {
   if (/term[ií]n|datum|kdy|lh[uů]ta/i.test(text)) addUnique(room.map.open, "Ze zdrojů ověřit termíny, závazky a časovou osu.");
   if (/potřeb|obav|hranice|důvěr|duver|odpověd/i.test(text)) addUnique(room.map.needs, "Ze zdrojů doplnit potřeby, obavy a hranice jednotlivých stran.");
   moveProgress(room, 4);
+}
+
+function generateProtocol(room) {
+  ensureRoomDefaultsShallow(room);
+  const date = new Intl.DateTimeFormat("cs-CZ", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: "Europe/Prague",
+  }).format(new Date());
+  const lines = [
+    `Protokol místnosti: ${room.title || "Dohoda"}`,
+    `Aktuální datum: ${date}`,
+    `Cíl: ${room.goal || "Najít dohodu"}`,
+    `Účastníci: ${(room.participants || []).join(", ") || "zatím neuvedeno"}`,
+    "",
+    "Průběžný zápis:",
+  ];
+  const diary = Array.isArray(room.diary) ? room.diary : [];
+  if (!diary.length) lines.push("- Zatím bez událostí.");
+  for (const item of diary) {
+    const when = item.at ? new Date(item.at).toLocaleString("cs-CZ", { timeZone: "Europe/Prague" }) : "";
+    lines.push(`- ${when ? `${when} · ` : ""}${item.author || "Záznam"}: ${item.text || ""}`);
+  }
+  return lines.join("\n");
+}
+
+function ensureRoomDefaultsShallow(room) {
+  if (!Array.isArray(room.diary)) room.diary = [];
+  if (!Array.isArray(room.participants)) room.participants = [];
 }
 
 function ensurePrivateConversation(room, author) {
