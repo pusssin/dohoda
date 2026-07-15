@@ -404,7 +404,7 @@ function agreementRow(room, expandedRoomId) {
               <strong>${escapeHtml(room.type)}</strong>
             </div>
             <div>
-              <p class="meta">Posun</p>
+              <p class="meta">Index dohody</p>
               <strong>${room.progress}%</strong>
             </div>
             <div>
@@ -558,7 +558,7 @@ function renderAdmin() {
         <section class="tool-card admin-card">
           <h3>Rychlé priority</h3>
           <ul>
-            ${needsAttention.length ? needsAttention.map((room) => `<li>${escapeHtml(room.title)}: nízký posun (${room.progress || 0} %)</li>`).join("") : "<li>Žádná místnost teď nevypadá zaseknutě.</li>"}
+            ${needsAttention.length ? needsAttention.map((room) => `<li>${escapeHtml(room.title)}: nízký index dohody (${room.progress || 0} %)</li>`).join("") : "<li>Žádná místnost teď nevypadá zaseknutě.</li>"}
           </ul>
         </section>
       </div>
@@ -652,7 +652,7 @@ function adminRoomDetail(room) {
         </div>
       </div>
       <div class="admin-detail-grid">
-        <span><strong>${room.progress || 0}%</strong> posun</span>
+        <span><strong>${room.progress || 0}%</strong> index dohody</span>
         <span><strong>${room.participants?.length || 0}</strong> účastníků</span>
         <span><strong>${room.locked ? "Zamčeno" : "Otevřeno"}</strong> pozvánky</span>
       </div>
@@ -1702,6 +1702,7 @@ function conflictMeter(room) {
       <div class="meter-track">
         <span style="width: ${room.progress}%"></span>
       </div>
+      ${agreementIndexInfo(room)}
     </div>
   `;
 }
@@ -1711,6 +1712,25 @@ function conflictStage(progress) {
   if (progress >= 58) return "tyrkysová: rýsuje se společný bod";
   if (progress >= 30) return "modrá: konflikt se strukturuje";
   return "červená: začátek konfliktu";
+}
+
+function agreementIndexInfo(room) {
+  const criteria = Array.isArray(room.progressBasis) ? room.progressBasis : [];
+  if (!criteria.length) return "";
+  return `
+    <details class="agreement-index-info">
+      <summary>Jak se počítá index dohody</summary>
+      <div class="agreement-index-grid">
+        ${criteria.map((item) => `
+          <div>
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${Number(item.value || 0)}/${Number(item.max || 0)}</strong>
+            <small>${escapeHtml(item.detail || "")}</small>
+          </div>
+        `).join("")}
+      </div>
+    </details>
+  `;
 }
 
 function conflictTheme(room) {

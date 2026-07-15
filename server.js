@@ -427,9 +427,7 @@ async function handleApi(req, res, url) {
 
     if (action === "agreement") {
       room.agreement = makeAgreement(room);
-      room.status = "Návrh dohody";
-      room.progress = Math.max(room.progress, 86);
-      room.stage = "Návrh dohody";
+      syncAgreementIndex(room);
       addDiary(room, "AI mediátor", "Mediátor připravil pracovní návrh dohody z dosavadní mapy konfliktu.", "agreement");
     }
 
@@ -948,6 +946,7 @@ function publicStoreFor(viewer = "", user = null) {
 
 function publicRoomFor(room, viewer = "") {
   ensureRoomDefaults(room);
+  syncAgreementIndex(room);
   const safeRoom = { ...room };
   const name = String(viewer || "").trim();
   const privateConversations = {};
@@ -958,6 +957,7 @@ function publicRoomFor(room, viewer = "") {
   }
   safeRoom.privateConversations = privateConversations;
   safeRoom.sources = room.sources.map(publicSource);
+  safeRoom.progressBasis = agreementIndexCriteria(room);
   safeRoom.sourceBytes = roomSourceBytes(room);
   safeRoom.sourceLimit = maxRoomSourceBytes;
   safeRoom.protocol = generateProtocol(room);
@@ -2045,7 +2045,15 @@ function updateMap(room, text) {
 }
 
 function moveProgress(room, amount) {
-  room.progress = Math.min(96, Math.max(0, room.progress + amount));
+  syncAgreementIndex(room, amount);
+}
+
+function syncAgreementIndex(room, activityBoost = 0) {
+  const score = calculateAgreementIndex(room);
+  const previous = Number(room.progress || 0);
+  const cap = agreementIndexCap(room);
+  const boosted = Math.min(cap, score + Math.min(4, Math.max(0, activityBoost || 0)));
+  room.progress = Math.max(score, Math.min(Math.max(Math.min(previous, cap), boosted), Math.min(cap, score + 8)));
   if (room.progress >= 86) {
     room.status = "Blízko dohody";
     room.stage = "Kontrola dohody";
@@ -2061,6 +2069,100 @@ function moveProgress(room, amount) {
   } else {
     room.stage = "Vstupní mapování";
   }
+}
+
+function calculateAgreementIndex(room) {
+  const criteria = agreementIndexCriteria(room);
+  let score = criteria.reduce((sum, item) => sum + item.value, 0);
+  const participants = room.participants || [];
+  const participantInputs = participantInputCount(room);
+  if (participants.length < 2) score = Math.min(score, 32);
+  else if (participantInputs < 2) score = Math.min(score, 52);
+  if (!String(room.agreement || "").trim()) score = Math.min(score, 74);
+  return score;
+}
+
+function agreementIndexCap(room) {
+  const participants = room.participants || [];
+  const participantInputs = participantInputCount(room);
+  if (participants.length < 2) return 32;
+  if (participantInputs < 2) return 52;
+  if (!String(room.agreement || "").trim()) return 74;
+  return 96;
+}
+
+function agreementIndexCriteria(room) {
+  ensureRoomDefaults(room);
+  const participants = room.participants || [];
+  const participantInputs = participantInputCount(room);
+  const sharedCount = room.map.shared.length;
+  const needsCount = room.map.needs.length;
+  const openCount = room.map.open.length;
+  const sourceCount = (room.sources || []).filter((source) => source.analysis || source.extractedText || source.url).length;
+  const hasAgreement = Boolean(String(room.agreement || "").trim());
+  const hasConcreteTerms = hasAgreement && /kdo|co|do kdy|term[ií]n|odpov[eě]dn|kontrol/i.test(room.agreement || "");
+  const activeSidesScore = participants.length >= 2 ? 14 : participants.length === 1 ? 6 : 0;
+  const inputScore = participants.length
+    ? Math.min(20, Math.round((participantInputs / Math.max(2, participants.length)) * 20))
+    : 0;
+  return [
+    {
+      id: "participants",
+      label: "Zapojení stran",
+      value: activeSidesScore,
+      max: 14,
+      detail: participants.length >= 2 ? "V místnosti je víc než jedna strana." : "Zatím je přítomná jen jedna strana.",
+    },
+    {
+      id: "inputs",
+      label: "Vlastní vstupy účastníků",
+      value: inputScore,
+      max: 20,
+      detail: `${participantInputs}/${Math.max(2, participants.length || 2)} stran už popsalo vlastní pohled.`,
+    },
+    {
+      id: "needs",
+      label: "Pojmenované potřeby",
+      value: Math.min(16, needsCount * 5),
+      max: 16,
+      detail: `${needsCount} zachycených potřeb nebo hranic.`,
+    },
+    {
+      id: "shared",
+      label: "Body shody",
+      value: Math.min(16, sharedCount * 5),
+      max: 16,
+      detail: `${sharedCount} bodů, na kterých se dá stavět.`,
+    },
+    {
+      id: "open",
+      label: "Otevřené body pod kontrolou",
+      value: sharedCount || needsCount ? Math.max(0, 12 - Math.min(12, openCount * 3)) : 0,
+      max: 12,
+      detail: openCount ? `${openCount} otevřených bodů ještě brzdí dohodu.` : "Otevřené body zatím nejsou překážkou.",
+    },
+    {
+      id: "sources",
+      label: "Podklady",
+      value: Math.min(8, sourceCount * 4),
+      max: 8,
+      detail: sourceCount ? `${sourceCount} zdrojů je čitelných nebo analyzovaných.` : "Zatím bez využitých podkladů.",
+    },
+    {
+      id: "agreement",
+      label: "Konkrétnost dohody",
+      value: (hasAgreement ? 10 : 0) + (hasConcreteTerms ? 4 : 0),
+      max: 14,
+      detail: hasAgreement ? "Existuje pracovní návrh dohody." : "Návrh dohody ještě není připravený.",
+    },
+  ];
+}
+
+function participantInputCount(room) {
+  const participants = room.participants || [];
+  return participants.filter((name) =>
+    (room.privateConversations?.[name] || []).some((message) => !message.ai && String(message.text || "").trim()),
+  ).length;
 }
 
 function addUnique(list, item) {

@@ -646,6 +646,44 @@ h1 {
   background: linear-gradient(90deg, #a64d4d 0%, #aa772f 52%, #2f6f5e 100%);
 }
 
+.agreement-index-info {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.agreement-index-info summary {
+  width: fit-content;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--future-accent-2) 66%, var(--muted));
+  font-weight: 800;
+}
+
+.agreement-index-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agreement-index-grid div {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+}
+
+.agreement-index-grid span,
+.agreement-index-grid strong {
+  color: var(--ink);
+}
+
+.agreement-index-grid small {
+  line-height: 1.35;
+}
+
 label {
   display: grid;
   gap: 6px;
