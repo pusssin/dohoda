@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 
 const root = __dirname;
 loadLocalEnv(path.join(root, ".env"));
@@ -479,13 +480,21 @@ async function handleApi(req, res, url) {
       }
       try {
         source.status = "Analyzuji";
-        source.analysis = await analyzeSource(room, source, 4500);
+        source.analysis = await analyzeSource(room, source, 10000);
         source.status = source.analysis ? "Analyzováno" : source.status || "Uloženo";
         applySourceAnalysis(room, source);
+        addSourceAnalysisToChat(room, actorName, source);
         addDiary(room, "AI mediátor", `Zdroj „${source.title}“ byl automaticky přečten, shrnut a doplněn o otázky pro mediaci.`, "source-analysis");
       } catch (error) {
         source.status = source.extractedText ? "Přečteno" : "Uloženo";
         source.note = "Zdroj je uložený, automatická analýza se zatím nepovedla.";
+        ensurePrivateConversation(room, actorName).push({
+          author: "AI mediátor",
+          text: `Zdroj „${source.title}“ jsem uložil, ale automatické shrnutí se teď nepovedlo. Zkuste „Analyzovat znovu“, případně přidejte krátký textový výňatek.`,
+          ai: true,
+          activity: true,
+          decision: "Zdroj uložen bez automatického shrnutí",
+        });
         console.warn("Automatic source analysis failed:", error.message);
       }
     }
@@ -499,6 +508,7 @@ async function handleApi(req, res, url) {
       source.analysis = await analyzeSource(room, source);
       source.status = source.analysis ? "Analyzováno" : source.status || "Uloženo";
       applySourceAnalysis(room, source);
+      addSourceAnalysisToChat(room, actorName, source);
       addDiary(room, "AI mediátor", `Zdroj „${source.title}“ byl přečten a promítnut do mapy dohody.`, "source-analysis");
     }
 
@@ -1315,6 +1325,13 @@ function extractReadableDataUrlText(source) {
     if (mime.startsWith("text/") || /\.(txt|md|csv|json|html|xml|rtf)$/i.test(source.fileName || "")) {
       return buffer.toString("utf8").replace(/\s+/g, " ").trim().slice(0, 180_000);
     }
+    if (
+      mime.includes("wordprocessingml.document") ||
+      mime.includes("vnd.openxmlformats-officedocument.wordprocessingml.document") ||
+      /\.docx$/i.test(source.fileName || "")
+    ) {
+      return extractDocxText(buffer).slice(0, 180_000);
+    }
     if (mime.includes("pdf") || /\.pdf$/i.test(source.fileName || "")) {
       return roughPdfText(buffer).slice(0, 180_000);
     }
@@ -1322,6 +1339,81 @@ function extractReadableDataUrlText(source) {
     console.warn("Source text extraction failed:", error.message);
   }
   return "";
+}
+
+function extractDocxText(buffer) {
+  const xmlParts = [
+    readZipEntry(buffer, "word/document.xml"),
+    ...listZipEntryNames(buffer)
+      .filter((name) => /^word\/(header|footer)\d+\.xml$/i.test(name))
+      .map((name) => readZipEntry(buffer, name)),
+  ].filter(Boolean);
+  return xmlParts.map(wordXmlToText).join("\n").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function listZipEntryNames(buffer) {
+  const entries = zipEntries(buffer);
+  return entries.map((entry) => entry.name);
+}
+
+function readZipEntry(buffer, wantedName) {
+  const entry = zipEntries(buffer).find((item) => item.name === wantedName);
+  if (!entry) return "";
+  const localSignature = buffer.readUInt32LE(entry.localOffset);
+  if (localSignature !== 0x04034b50) return "";
+  const nameLength = buffer.readUInt16LE(entry.localOffset + 26);
+  const extraLength = buffer.readUInt16LE(entry.localOffset + 28);
+  const dataStart = entry.localOffset + 30 + nameLength + extraLength;
+  const compressed = buffer.subarray(dataStart, dataStart + entry.compressedSize);
+  if (entry.method === 0) return compressed.toString("utf8");
+  if (entry.method === 8) return zlib.inflateRawSync(compressed).toString("utf8");
+  return "";
+}
+
+function zipEntries(buffer) {
+  const endOffset = findEndOfCentralDirectory(buffer);
+  if (endOffset < 0) return [];
+  const totalEntries = buffer.readUInt16LE(endOffset + 10);
+  let offset = buffer.readUInt32LE(endOffset + 16);
+  const entries = [];
+  for (let index = 0; index < totalEntries && offset < buffer.length - 46; index += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    entries.push({ name, method, compressedSize, localOffset });
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
+function findEndOfCentralDirectory(buffer) {
+  const minOffset = Math.max(0, buffer.length - 66_000);
+  for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
+  }
+  return -1;
+}
+
+function wordXmlToText(xml) {
+  return xml
+    .replace(/<w:tab\/>/g, "\t")
+    .replace(/<w:br\/>/g, "\n")
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 function roughPdfText(buffer) {
@@ -1340,10 +1432,35 @@ function roughPdfText(buffer) {
 
 function applySourceAnalysis(room, source) {
   const text = `${source.title} ${source.analysis || source.extractedText || source.url || ""}`;
+  const summary = sourceAnalysisSummary(source.analysis || source.extractedText || "");
   addUnique(room.map.shared, `Zdroj „${source.title}“ byl přidán jako podklad pro ověření faktů.`);
+  if (summary) addUnique(room.map.shared, summary);
   if (/term[ií]n|datum|kdy|lh[uů]ta/i.test(text)) addUnique(room.map.open, "Ze zdrojů ověřit termíny, závazky a časovou osu.");
   if (/potřeb|obav|hranice|důvěr|duver|odpověd/i.test(text)) addUnique(room.map.needs, "Ze zdrojů doplnit potřeby, obavy a hranice jednotlivých stran.");
   moveProgress(room, 4);
+}
+
+function addSourceAnalysisToChat(room, actorName, source) {
+  const conversation = ensurePrivateConversation(room, actorName);
+  const analysis = String(source.analysis || "").trim();
+  const summary = sourceAnalysisSummary(analysis);
+  conversation.push({
+    author: "AI mediátor",
+    text: [
+      `Zdroj „${source.title}“ jsem přečetl a přidal do analýzy dohody.`,
+      summary ? `\n${summary}` : "",
+      "\nMůžete mi teď napsat, co je z toho pro vás nejdůležitější nebo co mám porovnat s pohledem druhé strany.",
+    ].join(""),
+    ai: true,
+    activity: true,
+    decision: "Shrnutí přidaného zdroje",
+  });
+}
+
+function sourceAnalysisSummary(analysis) {
+  const match = analysis.match(/Krátké shrnutí:\s*([\s\S]*?)(?:\nCo z toho plyne|\nOtázky pro mediaci|\nDalší krok|$)/i);
+  const text = (match ? match[1] : analysis).replace(/\s+/g, " ").trim();
+  return text ? `Krátké shrnutí: ${text.slice(0, 420)}` : "";
 }
 
 function generateProtocol(room) {

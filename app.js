@@ -1386,7 +1386,7 @@ function bindOneSourceForm(room, prefix) {
       const payload = await buildSourcePayload(prefix);
       const result = await apiAction(`/api/rooms/${room.id}/add-source`, payload);
       state.rooms = result.store.rooms;
-      state.activeTool = "sources";
+      if (prefix !== "chatSource") state.activeTool = "sources";
       state.sourceDialogOpen = false;
       addToast("Zdroj přidán a analyzován");
       renderRoom();
