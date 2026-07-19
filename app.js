@@ -14,6 +14,8 @@ const state = {
   authUser: null,
   authMode: "login",
   authError: "",
+  inviteRoom: null,
+  inviteError: "",
   googleConfigured: false,
   sourceDialogOpen: false,
   theme: localStorage.getItem("dohoda.theme") || "light",
@@ -137,6 +139,10 @@ function route(view, roomId) {
 function render() {
   applyTheme();
   if (!state.authUser) {
+    if (isInviteJoinContext()) {
+      renderGuestInvite();
+      return;
+    }
     renderAuth();
     return;
   }
@@ -147,6 +153,22 @@ function render() {
     if (state.authUser?.admin) renderAdmin();
     else route("profile");
   }
+}
+
+function isInviteJoinContext() {
+  return new URLSearchParams(location.search).get("join") === "1" && location.hash.startsWith("#room-");
+}
+
+function renderGuestInvite() {
+  const room = state.inviteRoom || {
+    id: state.activeRoomId,
+    title: "Pozvaná místnost",
+    goal: "Vstup přes pozvánku",
+    progress: 0,
+    participants: [],
+    map: { shared: [], open: [], needs: [] },
+  };
+  renderJoinRoom(room, { guest: true });
 }
 
 function renderAuth() {
@@ -310,7 +332,7 @@ function renderProfile() {
   });
 }
 
-function renderJoinRoom(room) {
+function renderJoinRoom(room, options = {}) {
   const theme = conflictTheme(room);
   const savedName = roomParticipantOverride(room.id);
   app.className = "app minimal";
@@ -320,6 +342,7 @@ function renderJoinRoom(room) {
         ${logoMark()}
         <h1>Připojit se</h1>
         <p class="subtitle">Byli jste pozváni do místnosti „${escapeHtml(room.title)}“. Zadejte jméno, pod kterým budete v konfliktu vystupovat.</p>
+        ${state.inviteError ? `<p class="auth-error">${escapeHtml(state.inviteError)}</p>` : ""}
         ${conflictMeter(room)}
       </div>
       <form id="joinForm" class="entry-form">
@@ -338,10 +361,17 @@ function renderJoinRoom(room) {
     if (!name) return;
     try {
       setRoomParticipantName(room.id, name);
-      await apiAction(`/api/rooms/${room.id}/join`, { name, invite: state.inviteToken });
+      const result = await apiAction(`/api/rooms/${room.id}/join`, {
+        name,
+        invite: state.inviteToken,
+        guest: Boolean(options.guest || new URLSearchParams(location.search).get("join") === "1"),
+      });
+      if (result.authUser) state.authUser = result.authUser;
+      state.inviteError = "";
       route("room", room.id);
-    } catch {
-      addToast("Připojení se nepovedlo. Zkuste to znovu.");
+    } catch (error) {
+      state.inviteError = error.message || "Připojení se nepovedlo. Zkuste to znovu.";
+      renderJoinRoom(room, options);
     }
   });
 }
@@ -1988,6 +2018,7 @@ async function loadRemoteState() {
     }
     if (!response.ok) throw new Error("State unavailable");
     const data = await response.json();
+    if (data.authUser) state.authUser = data.authUser;
     if (Array.isArray(data.rooms)) {
       state.rooms = data.rooms;
       state.online = true;
@@ -2029,6 +2060,7 @@ async function apiAction(path, payload) {
     throw new Error(message);
   }
   const data = await response.json();
+  if (data.authUser) state.authUser = data.authUser;
   if (data.store?.rooms) state.rooms = data.store.rooms;
   return data;
 }
@@ -2092,6 +2124,9 @@ function exportProtocolPdf(room) {
 
 async function start() {
   await loadAuth();
+  if (!state.authUser && isInviteJoinContext()) {
+    await loadInviteRoom();
+  }
   if (state.authUser) {
     await loadRemoteState();
     await applyParticipantFromUrl();
@@ -2108,6 +2143,24 @@ async function start() {
     maybeNotifyRoomActivity(previousSignature);
     renderRoom();
   }, 2500);
+}
+
+async function loadInviteRoom() {
+  try {
+    if (location.hash.startsWith("#room-")) state.activeRoomId = location.hash.replace("#", "");
+    const params = new URLSearchParams(location.search);
+    state.inviteToken = params.get("invite") || state.inviteToken;
+    const query = new URLSearchParams();
+    if (state.inviteToken) query.set("invite", state.inviteToken);
+    const response = await fetch(`/api/invite/${state.activeRoomId}?${query}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Pozvánka není platná.");
+    state.inviteRoom = data.room;
+    state.inviteError = "";
+    state.googleConfigured = Boolean(data.googleConfigured);
+  } catch (error) {
+    state.inviteError = error.message || "Pozvánka není platná.";
+  }
 }
 
 async function applyParticipantFromUrl() {

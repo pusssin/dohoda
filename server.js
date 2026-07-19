@@ -223,8 +223,57 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  const inviteMatch = url.pathname.match(/^\/api\/invite\/([^/]+)$/);
+  if (req.method === "GET" && inviteMatch) {
+    const room = findRoom(inviteMatch[1]);
+    const invite = String(url.searchParams.get("invite") || "").trim();
+    if (!room || !validRoomInvite(room, invite)) {
+      sendJson(res, 404, { error: "Pozvánka není platná nebo už neexistuje." });
+      return;
+    }
+    sendJson(res, 200, { room: publicInviteRoom(room), googleConfigured: Boolean(googleClientId && googleClientSecret) });
+    return;
+  }
+
   const currentUser = getCurrentUser(req);
   if (!currentUser) {
+    const publicJoinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
+    if (req.method === "POST" && publicJoinMatch) {
+      const room = findRoom(publicJoinMatch[1]);
+      if (!room) {
+        sendJson(res, 404, { error: "Room not found" });
+        return;
+      }
+      const body = await readJson(req);
+      const invite = String(body.invite || "").trim();
+      const joinName = cleanName(body.name || body.participant);
+      if (!joinName) {
+        sendJson(res, 400, { error: "Zadejte jméno pro vstup do místnosti." });
+        return;
+      }
+      if (!validRoomInvite(room, invite)) {
+        sendJson(res, 403, { error: "Pozvánka do této místnosti není platná." });
+        return;
+      }
+      const guestUser = createGuestUser(joinName, room.id);
+      let actorName;
+      try {
+        actorName = joinRoom(room, body, guestUser);
+      } catch (error) {
+        store.users = store.users.filter((user) => user.id !== guestUser.id);
+        sendJson(res, error.status || 400, { error: error.message });
+        return;
+      }
+      const token = createSession(guestUser);
+      setSessionCookie(res, token);
+      await savePersistentStore();
+      sendJson(res, 200, {
+        room: publicRoomFor(room, actorName),
+        store: publicStoreFor(actorName, guestUser),
+        authUser: publicUser(guestUser),
+      });
+      return;
+    }
     sendJson(res, 401, { error: "Přihlášení je nutné." });
     return;
   }
@@ -324,7 +373,7 @@ async function handleApi(req, res, url) {
     }
     const action = match[2];
     const body = await readJson(req);
-    let actorName = roomActorName(currentUser, room, body);
+    let actorName = action === "join" ? cleanName(body.name || body.participant) || currentUser.name : roomActorName(currentUser, room, body);
 
     if (action !== "join" && !canViewRoom(currentUser, room, actorName)) {
       sendJson(res, 403, { error: "Do této místnosti nemáte přístup." });
@@ -332,34 +381,32 @@ async function handleApi(req, res, url) {
     }
 
     if (action === "join") {
-      const invite = String(body.invite || "").trim();
       const joinName = cleanName(body.name || body.participant) || currentUser.name;
-      actorName = joinName;
-      const validInvite = Boolean(room.inviteToken && invite === room.inviteToken);
-      if (room.inviteToken && !validInvite && !room.participants.includes(joinName) && !room.participants.includes(currentUser.name) && !currentUser.admin) {
-        sendJson(res, 403, { error: "Pozvánka do této místnosti není platná." });
-        return;
-      }
-      const alreadyParticipant = joinName && room.participants.includes(joinName);
-      if (room.locked && !alreadyParticipant) {
-        sendJson(res, 403, { error: "Místnost je uzamčená pro nové účastníky." });
-        return;
-      }
-      if (joinName) {
-        room.participants = unique([...room.participants, joinName]);
-        const conversation = ensurePrivateConversation(room, joinName);
-        if (!alreadyParticipant) {
-          conversation.push({
-            author: "AI mediátor",
-            text: newcomerBriefing(room, joinName),
-            ai: true,
-            activity: true,
-            decision: "Uvítací přehled pro nového účastníka",
-          });
+      if (body.guest === true && validRoomInvite(room, String(body.invite || "").trim()) && joinName && joinName !== currentUser.name) {
+        const guestUser = createGuestUser(joinName, room.id);
+        try {
+          actorName = joinRoom(room, body, guestUser);
+        } catch (error) {
+          store.users = store.users.filter((user) => user.id !== guestUser.id);
+          sendJson(res, error.status || 400, { error: error.message });
+          return;
         }
+        const token = createSession(guestUser);
+        setSessionCookie(res, token);
+        await savePersistentStore();
+        sendJson(res, 200, {
+          room: publicRoomFor(room, actorName),
+          store: publicStoreFor(actorName, guestUser),
+          authUser: publicUser(guestUser),
+        });
+        return;
       }
-      addAi(room, `${joinName || "Nový účastník"} se připojil do místnosti.`);
-      addDiary(room, "AI mediátor", `${joinName || "Nový účastník"} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
+      try {
+        actorName = joinRoom(room, body, currentUser);
+      } catch (error) {
+        sendJson(res, error.status || 400, { error: error.message });
+        return;
+      }
     }
 
     if (action === "private") {
@@ -964,6 +1011,29 @@ function publicRoomFor(room, viewer = "") {
   return safeRoom;
 }
 
+function publicInviteRoom(room) {
+  ensureRoomDefaults(room);
+  syncAgreementIndex(room);
+  return {
+    id: room.id,
+    title: room.title,
+    goal: room.goal || "",
+    type: room.type || "",
+    status: room.status || "",
+    stage: room.stage || "",
+    progress: room.progress || 0,
+    progressBasis: agreementIndexCriteria(room),
+    participants: room.participants || [],
+    archived: Boolean(room.archived),
+    locked: Boolean(room.locked),
+    map: { shared: [], open: [], needs: [] },
+    messages: [],
+    privateConversations: {},
+    sources: [],
+    agreement: "",
+  };
+}
+
 function publicSource(source) {
   return {
     id: source.id,
@@ -994,11 +1064,20 @@ function publicUser(user) {
     email: user.email,
     admin: Boolean(user.admin),
     provider: user.provider || "password",
+    guest: Boolean(user.guest),
   };
+}
+
+function validRoomInvite(room, invite) {
+  return Boolean(room?.inviteToken && invite && room.inviteToken === invite);
 }
 
 function canViewRoom(user, room, viewer = "") {
   if (!user) return false;
+  if (user.guest) {
+    const name = String(viewer || user.name || "").trim();
+    return Boolean(room.id === user.roomId && name === user.name && room.participants?.includes(name));
+  }
   if (user.admin) return true;
   if (room.ownerId && room.ownerId === user.id) return true;
   const name = String(viewer || user.name || "").trim();
@@ -1007,6 +1086,7 @@ function canViewRoom(user, room, viewer = "") {
 
 function roomActorName(user, room, body = {}) {
   const requested = cleanName(body.participant || body.author || body.name);
+  if (user.guest) return user.name;
   if (!requested) return user.name;
   if (user.admin || requested === user.name || room.participants?.includes(requested)) return requested;
   return user.name;
@@ -1024,6 +1104,57 @@ function canDeleteSource(user, room, source) {
   if (source.addedById && source.addedById === user.id) return true;
   if (source.addedBy && source.addedBy === user.name) return true;
   return canManageRoom(user, room);
+}
+
+function createGuestUser(name, roomId) {
+  const user = {
+    id: `guest-${Date.now().toString(36)}-${randomToken()}`,
+    name,
+    email: `guest-${randomToken()}@dohoda.local`,
+    provider: "guest",
+    guest: true,
+    roomId,
+    admin: false,
+    createdAt: new Date().toISOString(),
+  };
+  store.users.push(user);
+  return user;
+}
+
+function joinRoom(room, body, user) {
+  const invite = String(body.invite || "").trim();
+  const joinName = cleanName(body.name || body.participant) || user?.name || "";
+  if (!joinName) {
+    const error = new Error("Zadejte jméno pro vstup do místnosti.");
+    error.status = 400;
+    throw error;
+  }
+  const alreadyParticipant = room.participants?.includes(joinName);
+  const validInvite = validRoomInvite(room, invite);
+  if (room.inviteToken && !validInvite && !alreadyParticipant && !room.participants?.includes(user?.name) && !user?.admin) {
+    const error = new Error("Pozvánka do této místnosti není platná.");
+    error.status = 403;
+    throw error;
+  }
+  if (room.locked && !alreadyParticipant) {
+    const error = new Error("Místnost je uzamčená pro nové účastníky.");
+    error.status = 403;
+    throw error;
+  }
+  room.participants = unique([...(room.participants || []), joinName]);
+  const conversation = ensurePrivateConversation(room, joinName);
+  if (!alreadyParticipant) {
+    conversation.push({
+      author: "AI mediátor",
+      text: newcomerBriefing(room, joinName),
+      ai: true,
+      activity: true,
+      decision: "Uvítací přehled pro nového účastníka",
+    });
+    addAi(room, `${joinName} se připojil/a do místnosti.`);
+    addDiary(room, "AI mediátor", `${joinName} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
+  }
+  return joinName;
 }
 
 function shouldBeAdmin(email) {
