@@ -49,6 +49,9 @@ const mediationPlaybook = [
   "Pracuj zájmově: hledej potřeby a zájmy pod pozicemi, ne vítěze sporu.",
   "Používej nenásilnou komunikaci: pozorování, pocit, potřeba, prosba.",
   "Mediuj aktivně: shrň společný bod, propoj strany a navrhni nejmenší testovatelný další krok.",
+  "Motivuj každou stranu k vlastnímu vyjádření. Výzva má být krátká, konkrétní a snadno zodpověditelná, ne jako dotazník.",
+  "Když z příspěvku není jasný problém, cíl, potřeba nebo požadovaný výsledek, polož jednu zaměřenou doplňující otázku. Nehádej a nepokládej více otázek najednou.",
+  "Když je sdělení dostatečně jasné, neopakuj zbytečné otázky a rovnou nabídni spojku nebo další krok.",
   "Nebuď nudný formulář. Buď stručný, živý, konkrétní a trochu odlehčující, pokud to nebagatelizuje bolest.",
   "Neptej se na souhlas s každou větou. Když je bezpečné posunout proces, udělej to.",
   "Buď stručný a o důležitých krocích informuj. Nezahlcuj variantami. Nabízej varianty jen když účastník řeší tón sdělení nebo když je výběr opravdu užitečný.",
@@ -1145,15 +1148,17 @@ function joinRoom(room, body, user) {
     throw error;
   }
   room.participants = unique([...(room.participants || []), joinName]);
-  const conversation = ensurePrivateConversation(room, joinName);
   if (!alreadyParticipant) {
-    conversation.push({
-      author: "AI mediátor",
-      text: newcomerBriefing(room, joinName),
-      ai: true,
-      activity: true,
-      decision: "Uvítací přehled pro nového účastníka",
-    });
+    if (!room.privateConversations) room.privateConversations = {};
+    room.privateConversations[joinName] = [
+      {
+        author: "AI mediátor",
+        text: newcomerBriefing(room, joinName),
+        ai: true,
+        activity: true,
+        decision: "Uvítací přehled a výzva pro nového účastníka",
+      },
+    ];
     addAi(room, `${joinName} se připojil/a do místnosti.`);
     addDiary(room, "AI mediátor", `${joinName} vstoupil/a do místnosti a má vlastní soukromý prostor s mediátorem.`, "join");
   }
@@ -1925,8 +1930,11 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
         content: [
           "Jsi Dohoda, nezaujatý AI mediátor. Vedeš soukromý dialog s jedním účastníkem a současně bezpečně propojuješ všechny strany.",
           "Nejdřív přímo reaguj na otázku nebo sdělení autora. Otázku nikdy neobcházej procesní frází.",
-          "Soukromá odpověď má být lidská, konkrétní, stručná a má skončit jedním užitečným dalším krokem.",
+          "Soukromá odpověď má být lidská, konkrétní a stručná. Aktivně účastníka vtahuj do rozhovoru, ale nezatěžuj ho sérií otázek.",
+          "Pokud není jasné, co účastník považuje za problém, čeho chce dosáhnout nebo co od ostatních potřebuje, polož právě jednu konkrétní doplňující otázku.",
+          "Pokud je záměr jasný, neptej se znovu na totéž. Navrhni další krok a zakonči jednoduchou výzvou, na kterou lze snadno odpovědět.",
           "Pro každého dalšího účastníka napiš samostatnou zprávu, která sdělí skutečnou podstatu nového vstupu: téma, potřebu nebo návrh autora a možnou spojku k dohodě.",
+          "Každou zprávu pro dalšího účastníka zakonči jednou lehkou a konkrétní výzvou k reakci, například volbou, krátkou otázkou nebo žádostí o jednu větu.",
           "Neposílej jen informaci, že autor komunikuje. Neprozrazuj doslovný soukromý text, urážky, citlivé detaily ani domněnky o motivech.",
           "Pokud autor výslovně žádá, aby určitá věc zůstala soukromá, respektuj to a ostatním pouze sděl bezpečnou obecnou podstatu, nebo že zatím není co předat.",
           "Nikdy nevydávej soukromé informace jednoho příjemce jinému. Kontext příjemce používej jen pro přizpůsobení tónu.",
@@ -2134,6 +2142,7 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
       settings.autoBridge
         ? "Každá zpráva příjemci musí popsat obsahovou podstatu vstupu autora, ne pouze jeho aktivitu."
         : "Automatické předávání je vypnuté: příjemcům napiš pouze stručnou obecnou informaci bez obsahových detailů.",
+      "Každého příjemce vyzvi k vlastní krátké reakci na předanou podstatu. Ptej se jen na jednu věc, kterou lze snadno zodpovědět.",
       settings.adaptToRecipient
         ? "Tón každé zprávy přizpůsob konkrétnímu příjemci."
         : "Použij pro všechny příjemce stejný neutrální tón.",
@@ -2143,7 +2152,8 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
         : "Nepřidávej návrhy formulace.",
       settings.initiatorMode
         ? "Jako Iniciátor zakonči odpověď jednoduchým mikrokrokem, který rychle zapojí ostatní."
-        : "Zakonči jedním přirozeným dalším krokem.",
+        : "Zakonči jedním přirozeným dalším krokem nebo krátkou otázkou, která účastníka motivuje pokračovat.",
+      "Jestli není z nové zprávy jasný problém nebo požadovaný cíl, polož pouze jednu doplňující otázku zaměřenou na nejdůležitější chybějící informaci.",
     ].join(" "),
   ].join("\n");
 }
@@ -2351,17 +2361,54 @@ function initiatorParticipantPrompt(room, author, participant) {
 
 function newcomerBriefing(room, participant) {
   const stage = room.stage || room.status || "vstupní mapování";
-  const shared = room.map?.shared?.slice(0, 3).join("; ") || "zatím se hledají první společné body";
-  const open = room.map?.open?.slice(0, 3).join("; ") || "zatím nejsou uzavřené hlavní otevřené body";
-  const needs = room.map?.needs?.slice(0, 3).join("; ") || "potřeby stran se teprve mapují";
+  const existingParticipants = room.participants.filter((name) => name && name !== participant);
+  const title = trimSentenceEnd(room.title || "Nová dohoda");
+  const goal = trimSentenceEnd(room.goal || "najít konkrétní dohodu");
+  const shared = formatBriefingItems(room.map?.shared?.slice(-3), "společné body se zatím hledají");
+  const open = formatBriefingItems(room.map?.open?.slice(-3), "hlavní otevřené body se teprve pojmenovávají");
+  const recentTopics = safeNewcomerTopics(room);
   return [
-    `Vítejte, ${participant}. Tady je rychlý přehled bez soukromých zpráv ostatních.`,
-    `Fáze: ${stage}. Posun místnosti: ${room.progress || 0} %.`,
-    `Co zatím víme: ${shared}.`,
-    `Otevřené body: ${open}.`,
-    `Potřeby v mapě: ${needs}.`,
-    "První krok: napište jednu větu ve tvaru „Potřebuji, aby...“. Nemusí být dokonalá. Já ji zklidním, zpřesním a navrhnu, co z ní má slyšet druhá strana.",
+    `Vítejte, ${participant}. Nejdřív krátký kontext, potom dostanete prostor pro svůj vlastní pohled.`,
+    `Téma: ${title}.`,
+    `Cíl místnosti: ${goal}.`,
+    existingParticipants.length
+      ? `${existingParticipants.length === 1 ? "Další účastník" : "Další účastníci"} v místnosti: ${existingParticipants.join(", ")}. Fáze: ${stage}.`
+      : `Zatím jste v místnosti první účastník. Fáze: ${stage}.`,
+    recentTopics.length
+      ? `Dosud se bezpečně otevřelo: ${recentTopics.join("; ")}.`
+      : "Dosavadní účastníci zatím nepředali dost konkrétního obsahu pro společné shrnutí.",
+    `Co se zatím rýsuje: ${shared}.`,
+    `Co zůstává otevřené: ${open}.`,
+    "Teď váš pohled: co z toho vidíte stejně nebo jinak a čeho byste chtěl/a dosáhnout? Stačí jedna věta. Pokud nebude něco jasné, zeptám se jen na jednu důležitou věc.",
   ].join("\n");
+}
+
+function trimSentenceEnd(value) {
+  return String(value || "").trim().replace(/[.;:,!?\s]+$/u, "");
+}
+
+function formatBriefingItems(items, fallback) {
+  const values = (items || []).map(trimSentenceEnd).filter(Boolean);
+  return values.length ? values.join("; ") : fallback;
+}
+
+function safeNewcomerTopics(room) {
+  const topics = (room.diary || [])
+    .filter((item) => ["private-topic", "source-analysis", "analysis", "agreement"].includes(item?.type))
+    .slice(-5)
+    .map((item) => {
+      const text = String(item.text || "").replace(/\s+/g, " ").trim();
+      if (item.type === "private-topic") {
+        const match = text.match(/^(.+?) právě řeší s mediátorem: (.+?)\. Ostatní/u);
+        if (match) return `${match[1]}: téma „${match[2]}“`;
+      }
+      if (item.type === "source-analysis") return "do mapy byl promítnut nový zdroj";
+      if (item.type === "agreement") return "vznikl pracovní návrh dohody";
+      if (item.type === "analysis") return "byly aktualizovány společné a otevřené body";
+      return "";
+    })
+    .filter(Boolean);
+  return unique(topics).slice(-4);
 }
 
 function fallbackRecipientBridgeReply(room, text, author, recipient) {
