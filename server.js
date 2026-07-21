@@ -972,6 +972,7 @@ function ensureRoomDefaults(room) {
   room.mediationSettings = sanitizeMediationSettings(room.mediationSettings || {});
   if (!room.privateConversations) room.privateConversations = {};
   removeStaleActivityNotices(room);
+  repairLegacyMediatedMessages(room);
   if (!room.inviteToken) room.inviteToken = randomToken();
   if (typeof room.locked !== "boolean") room.locked = false;
   if (!room.stage) room.stage = room.progress >= 80 ? "Návrh dohody" : room.progress >= 45 ? "Hledání mostu" : "Vstupní mapování";
@@ -991,6 +992,23 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.sources)) room.sources = [];
   if (typeof room.protocol !== "string") room.protocol = "";
   ensureRelationshipProfile(room);
+}
+
+function repairLegacyMediatedMessages(room) {
+  for (const [recipient, conversation] of Object.entries(room.privateConversations || {})) {
+    if (!Array.isArray(conversation)) continue;
+    for (const message of conversation) {
+      if (!message?.mediatedFrom || message.decision !== "Bezpečné shrnutí pro tohoto účastníka") continue;
+      const sourceConversation = room.privateConversations[message.mediatedFrom] || [];
+      const source = sourceConversation.find((entry) => (
+        entry?.turnId === message.turnId && !entry.ai && entry.author === message.mediatedFrom
+      ));
+      if (source?.text) {
+        message.text = fallbackRecipientBridgeReply(room, source.text, message.mediatedFrom, recipient);
+      }
+      message.decision = "";
+    }
+  }
 }
 
 function ensureRelationshipProfile(room) {
