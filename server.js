@@ -54,6 +54,8 @@ const mediationPlaybook = [
   "Když je sdělení dostatečně jasné, neopakuj zbytečné otázky a rovnou nabídni spojku nebo další krok.",
   "Nebuď nudný formulář. Buď stručný, živý, konkrétní a trochu odlehčující, pokud to nebagatelizuje bolest.",
   "Neptej se na souhlas s každou větou. Když je bezpečné posunout proces, udělej to.",
+  "Rychle podchytávej vztahový kontext: kdo ke komu mluví, co kdo potřebuje, čeho se bojí, kde je ochota a kde odpor.",
+  "Směřuj k férovému kompromisu: co je minimum pro každou stranu, co může každá nabídnout a jak poznáme, že dohoda funguje.",
   "Buď stručný a o důležitých krocích informuj. Nezahlcuj variantami. Nabízej varianty jen když účastník řeší tón sdělení nebo když je výběr opravdu užitečný.",
 ].join(" ");
 
@@ -412,6 +414,24 @@ async function handleApi(req, res, url) {
       }
     }
 
+    if (action === "nudge") {
+      const author = actorName;
+      const conversation = ensurePrivateConversation(room, author);
+      const hasOwnInput = conversation.some((message) => !message.ai && message.author === author && String(message.text || "").trim());
+      const hasRecentNudge = conversation.slice(-4).some((message) => message.idleNudge);
+      if (!hasOwnInput && !hasRecentNudge) {
+        conversation.push({
+          author: "AI mediátor",
+          text: mediatorIdlePrompt(room, author),
+          ai: true,
+          activity: true,
+          idleNudge: true,
+          decision: "Aktivní výzva mediátora",
+        });
+        addDiary(room, "AI mediátor", `${author} dostal/a krátkou aktivní výzvu k prvnímu vlastnímu vstupu.`, "mediator-nudge");
+      }
+    }
+
     if (action === "private") {
       const author = actorName;
       const text = String(body.text || "").trim();
@@ -438,6 +458,7 @@ async function handleApi(req, res, url) {
       replaceAuthorMediatorReply(conversation, turnId, mediationTurn.authorReply);
       applyMediatedRecipientUpdates(room, author, mediationTurn.recipientMessages, turnId);
       applyRelationshipSignals(room, mediationTurn.relationshipSignals);
+      applyParticipantSignals(room, mediationTurn.participantSignals);
       addDiary(room, "AI mediátor", `Mediátor odpověděl účastníkovi ${author} a rozeslal ostatním bezpečné shrnutí podstaty.`, "mediator-response");
       updateMap(room, text);
       moveProgress(room, 5);
@@ -992,6 +1013,7 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.sources)) room.sources = [];
   if (typeof room.protocol !== "string") room.protocol = "";
   ensureRelationshipProfile(room);
+  ensureParticipantProfiles(room);
 }
 
 function repairLegacyMediatedMessages(room) {
@@ -1041,6 +1063,31 @@ function ensureRelationshipProfile(room) {
   }
 }
 
+function ensureParticipantProfiles(room) {
+  if (!room.participantProfiles || typeof room.participantProfiles !== "object") {
+    room.participantProfiles = {};
+  }
+  const participants = Array.isArray(room.participants) ? room.participants.filter(Boolean) : [];
+  for (const name of participants) {
+    if (!room.participantProfiles[name] || typeof room.participantProfiles[name] !== "object") {
+      room.participantProfiles[name] = {
+        statedGoal: "",
+        needs: [],
+        boundaries: [],
+        communicationStyle: "zatím nejasné",
+        openness: "zatím nejasná",
+        blockers: [],
+        usefulNextQuestion: "Co by pro vás znamenal férový posun?",
+        confidence: "low",
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    for (const key of ["needs", "boundaries", "blockers"]) {
+      if (!Array.isArray(room.participantProfiles[name][key])) room.participantProfiles[name][key] = [];
+    }
+  }
+}
+
 function normalizedRelationshipPair(participantA, participantB) {
   const names = [cleanName(participantA), cleanName(participantB)].sort((a, b) => a.localeCompare(b, "cs"));
   return { participantA: names[0], participantB: names[1], key: names.join("::") };
@@ -1069,6 +1116,34 @@ function applyRelationshipSignals(room, signals) {
     if (relationship) Object.assign(relationship, update);
     else room.relationshipProfile.relationships.push(update);
   }
+}
+
+function applyParticipantSignals(room, signals) {
+  ensureParticipantProfiles(room);
+  const participants = new Set(room.participants || []);
+  for (const signal of Array.isArray(signals) ? signals : []) {
+    const participant = cleanName(signal?.participant);
+    if (!participant || !participants.has(participant)) continue;
+    const previous = room.participantProfiles[participant] || {};
+    room.participantProfiles[participant] = {
+      statedGoal: String(signal.statedGoal || previous.statedGoal || "").trim(),
+      needs: mergeShortLists(previous.needs, signal.needs, 6),
+      boundaries: mergeShortLists(previous.boundaries, signal.boundaries, 6),
+      communicationStyle: String(signal.communicationStyle || previous.communicationStyle || "zatím nejasné").trim(),
+      openness: String(signal.openness || previous.openness || "zatím nejasná").trim(),
+      blockers: mergeShortLists(previous.blockers, signal.blockers, 6),
+      usefulNextQuestion: String(signal.usefulNextQuestion || previous.usefulNextQuestion || "Co by pro vás znamenal férový posun?").trim(),
+      confidence: ["low", "medium", "high"].includes(signal.confidence) ? signal.confidence : previous.confidence || "low",
+      updatedAt: new Date().toISOString(),
+    };
+  }
+}
+
+function mergeShortLists(previous, next, limit = 6) {
+  return unique([
+    ...(Array.isArray(previous) ? previous : []),
+    ...(Array.isArray(next) ? next : []),
+  ].map((item) => String(item || "").trim()).filter(Boolean)).slice(-limit);
 }
 
 function removeStaleActivityNotices(room) {
@@ -1113,6 +1188,7 @@ function publicRoomFor(room, viewer = "") {
   safeRoom.sourceLimit = maxRoomSourceBytes;
   safeRoom.protocol = generateProtocol(room);
   delete safeRoom.relationshipProfile;
+  delete safeRoom.participantProfiles;
   return safeRoom;
 }
 
@@ -1275,10 +1351,10 @@ function sanitizeMediationSettings(settings) {
   const variants = Math.max(0, Math.min(3, Number(settings.variants ?? defaultMediationSettings.variants)));
   return {
     style,
-    autoBridge: settings.autoBridge !== false,
-    adaptToRecipient: settings.adaptToRecipient !== false,
+    autoBridge: true,
+    adaptToRecipient: true,
     variants,
-    initiatorMode: settings.initiatorMode === true,
+    initiatorMode: false,
   };
 }
 
@@ -1797,6 +1873,9 @@ async function processPrivateMediationTurn(room, text, author) {
         message: byRecipient.get(recipient) || fallbackRecipientBridgeReply(room, text, author, recipient),
       })),
       relationshipSignals: Array.isArray(turn.relationshipSignals) ? turn.relationshipSignals : [],
+      participantSignals: Array.isArray(turn.participantSignals) && turn.participantSignals.length
+        ? turn.participantSignals
+        : fallback.participantSignals,
     };
   } catch (error) {
     console.warn("OpenAI mediation turn fallback:", error.message);
@@ -1845,6 +1924,32 @@ function fallbackPrivateMediationTurn(room, text, author) {
       message: fallbackRecipientBridgeReply(room, text, author, recipient),
     })),
     relationshipSignals: [],
+    participantSignals: [inferParticipantSignalFromText(room, text, author)],
+  };
+}
+
+function inferParticipantSignalFromText(room, text, author) {
+  const lower = String(text || "").toLowerCase();
+  const needs = [];
+  const boundaries = [];
+  const blockers = [];
+  if (/nev[ií]m|nechap|necháp|zmatek|jasn/i.test(lower)) needs.push("srozumitelný kontext a jasnější orientace");
+  if (/vad[ií]|štve|stve|bol[ií]|zra[nň]/i.test(lower)) needs.push("aby byla pojmenovaná věc, která vadí nebo zraňuje");
+  if (/nechci|hranice|dost|sta[cč]/i.test(lower)) boundaries.push("jasnější hranice a respekt k nim");
+  if (/neochot|ignor|nereag|ml[cč]/i.test(lower)) blockers.push("pocit nízké ochoty nebo nedostatečné reakce druhé strany");
+  if (!needs.length && !boundaries.length && !blockers.length && !isGreetingMessage(text)) {
+    needs.push("konkrétněji pojmenovat, co má být jinak");
+  }
+  return {
+    participant: author,
+    statedGoal: isGreetingMessage(text) ? "" : String(text || "").trim().slice(0, 180),
+    needs,
+    boundaries,
+    communicationStyle: isGreetingMessage(text) ? "navazuje kontakt" : "stručný, zatím potřebuje zpřesnění",
+    openness: "otevřenost zatím nelze spolehlivě určit",
+    blockers,
+    usefulNextQuestion: "Co je jeden konkrétní příklad, podle kterého poznáme, co se má změnit?",
+    confidence: "low",
   };
 }
 
@@ -2086,7 +2191,11 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
           "Reaguj na každou zprávu bez výjimky, včetně pozdravu, jednoslovné odpovědi nebo neurčité poznámky. Nikdy nenechávej účastníka bez přímé reakce.",
           "Na pozdrav odpověz přirozeně a krátce. U obsahově prázdné zprávy nic neinterpretuj; lehce účastníka vyzvi k první konkrétní větě.",
           "Nejdřív přímo reaguj na otázku nebo sdělení autora. Otázku nikdy neobcházej procesní frází.",
-          "Soukromá odpověď má být lidská, konkrétní a stručná. Aktivně účastníka vtahuj do rozhovoru, ale nezatěžuj ho sérií otázek.",
+          "Soukromá odpověď má být lidská, konkrétní, stručná a akční. Aktivně účastníka vtahuj do rozhovoru, ale nezatěžuj ho sérií otázek.",
+          "Mediátor není pasivní zapisovatel. Když se rozhovor nehýbe, nabídni nejmenší bezpečný krok: jednu větu, jednu volbu, jednu otázku nebo malý test dohody.",
+          "Nejdřív rafinovaně a přirozeně zachyť problém: kdo je ve vztahu, co se děje, co koho bolí nebo brzdí, co každý potřebuje a jaké řešení by mohlo být férové.",
+          "Sestavuj interní pracovní profily účastníků: jejich cíle, potřeby, hranice, komunikační styl, ochotu ke kompromisu, blokery a otázku, která je může posunout. Pracuj s tím jako s hypotézou, ne jako s faktem.",
+          "Hledej ospravedlnitelné a férové kompromisy pro všechny strany. Kde to dává smysl, přemýšlej jako vyjednavač: co je výměna, ústupek, protihodnota, ověřitelný závazek a kontrolní bod.",
           "Pokud není jasné, co účastník považuje za problém, čeho chce dosáhnout nebo co od ostatních potřebuje, polož právě jednu konkrétní doplňující otázku.",
           "Pokud je záměr jasný, neptej se znovu na totéž. Navrhni další krok a zakonči jednoduchou výzvou, na kterou lze snadno odpovědět.",
           "Automatické přerámování je již schválené nastavením místnosti. Nikdy se autora neptej, zda smíš zprávu přepsat nebo předat, a neoznamuj mu, že ji právě předáváš.",
@@ -2132,6 +2241,35 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
                 additionalProperties: false,
               },
             },
+            participantSignals: {
+              type: "array",
+              description: "Aktualizované pracovní hypotézy o jednotlivých účastnících. Nejsou zobrazovány účastníkům jako fakta.",
+              items: {
+                type: "object",
+                properties: {
+                  participant: { type: "string" },
+                  statedGoal: { type: "string" },
+                  needs: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  boundaries: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  communicationStyle: { type: "string" },
+                  openness: { type: "string" },
+                  blockers: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  usefulNextQuestion: { type: "string" },
+                  confidence: { type: "string", enum: ["low", "medium", "high"] },
+                },
+                required: ["participant", "statedGoal", "needs", "boundaries", "communicationStyle", "openness", "blockers", "usefulNextQuestion", "confidence"],
+                additionalProperties: false,
+              },
+            },
             relationshipSignals: {
               type: "array",
               description: "Aktualizované pracovní hypotézy o vztazích mezi účastníky. Nejsou zobrazovány účastníkům jako fakta.",
@@ -2151,7 +2289,7 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
               },
             },
           },
-          required: ["authorReply", "recipientMessages", "relationshipSignals"],
+          required: ["authorReply", "recipientMessages", "participantSignals", "relationshipSignals"],
           additionalProperties: false,
         },
       },
@@ -2278,6 +2416,7 @@ function buildPrivateMediatorContext(room, text, author) {
 function buildPrivateMediationTurnContext(room, text, author, recipients) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
   ensureRelationshipProfile(room);
+  ensureParticipantProfiles(room);
   const authorHistory = ensurePrivateConversation(room, author)
     .slice(-7)
     .map((message) => `${message.author}: ${message.text}`)
@@ -2299,6 +2438,22 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
       `jistota: ${relationship.confidence}`,
     ].join(" | "))
     .join("\n");
+  const participantProfileContext = (room.participants || [])
+    .map((participant) => {
+      const profile = room.participantProfiles?.[participant] || {};
+      return [
+        `${participant}`,
+        `cíl: ${profile.statedGoal || "zatím nejasný"}`,
+        `potřeby: ${(profile.needs || []).join("; ") || "zatím nejasné"}`,
+        `hranice: ${(profile.boundaries || []).join("; ") || "zatím nejasné"}`,
+        `styl: ${profile.communicationStyle || "zatím nejasný"}`,
+        `otevřenost: ${profile.openness || "zatím nejasná"}`,
+        `blokery: ${(profile.blockers || []).join("; ") || "zatím nejasné"}`,
+        `další otázka: ${profile.usefulNextQuestion || "zatím nejasná"}`,
+        `jistota: ${profile.confidence || "low"}`,
+      ].join(" | ");
+    })
+    .join("\n");
 
   return [
     `Místnost: ${room.title}`,
@@ -2319,6 +2474,9 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
     "",
     "Pracovní profil vztahů (hypotézy, nikoli potvrzená fakta):",
     relationshipContext || "- zatím bez profilu",
+    "",
+    "Pracovní profily účastníků (hypotézy, nikoli potvrzená fakta):",
+    participantProfileContext || "- zatím bez profilů",
     "",
     "Soukromý rozhovor s autorem:",
     authorHistory || "- bez historie",
@@ -2345,6 +2503,7 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
         : "Zakonči jedním přirozeným dalším krokem nebo krátkou otázkou, která účastníka motivuje pokračovat.",
       "Jestli není z nové zprávy jasný problém nebo požadovaný cíl, polož pouze jednu doplňující otázku zaměřenou na nejdůležitější chybějící informaci.",
       "Nikdy autora nežádej o svolení k automatickému přerámování a příjemci nikdy nepopisuj, co mediátor se zprávou udělal.",
+      `Pole participantSignals aktualizuj hlavně pro autora ${author}, případně i pro ostatní jen pokud máš oporu v jejich vlastním dosavadním kontextu. Uveď konkrétní potřeby, hranice, blokery a jednu otázku, která může člověka rozhýbat.`,
       `Pole relationshipSignals aktualizuj pro dvojice zahrnující autora a příjemce: ${recipients.map((recipient) => `${author} + ${recipient}`).join(", ") || "žádné"}. Zachovej nejistotu a nevydávej domněnky za fakta.`,
     ].join(" "),
   ].join("\n");
@@ -2561,6 +2720,23 @@ function initiatorParticipantPrompt(room, author, participant) {
     `${author} zapnul/a Iniciátora, takže zkusím mediaci trochu rozhýbat.`,
     `Pro vás, ${participant}: napište jen jednu větu. Co z pohledu druhé strany umíte uznat, i když s ní nesouhlasíte celou?`,
     "Stačí krátce. Cíl není ustoupit, ale najít první společný bod.",
+  ].join("\n");
+}
+
+function mediatorIdlePrompt(room, participant) {
+  const others = (room.participants || []).filter((name) => name && name !== participant);
+  const title = trimSentenceEnd(room.title || "tahle dohoda");
+  if (!others.length) {
+    return [
+      `${participant}, pojďme to rozjet co nejlehčeji.`,
+      `K tématu „${title}“ mi napište jen jednu větu: co by se mělo změnit, aby to pro vás začalo dávat smysl?`,
+      "Nemusí to být dokonale formulované. Od toho jsem tady.",
+    ].join("\n");
+  }
+  return [
+    `${participant}, vezmu vás do toho krátce a bez tlaku.`,
+    `V místnosti je také ${others.join(", ")}. Abych mohl férově propojovat pohledy, potřebuji od vás první vlastní stopu.`,
+    "Vyberte jednu možnost a napište jedinou větu: co vám vadí, co potřebujete, nebo co jste ochotný/á nabídnout jako první malý krok?",
   ].join("\n");
 }
 

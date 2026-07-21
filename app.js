@@ -18,6 +18,8 @@ const state = {
   inviteError: "",
   googleConfigured: false,
   sourceDialogOpen: false,
+  idleNudges: {},
+  idleTimers: {},
   theme: localStorage.getItem("dohoda.theme") || "light",
   soundEnabled: localStorage.getItem("dohoda.soundEnabled") === "true",
   soundPrimed: false,
@@ -186,7 +188,7 @@ function renderAuth() {
       <div class="entry-title">
         ${logoMark()}
         <h1>Dohoda</h1>
-        <p class="subtitle">Nezaujatý AI mediátor, který rychle hledá společné body, propojuje strany a vede konflikt ke konkrétnímu dalšímu kroku.</p>
+        <p class="subtitle">Nezaujatý AI mediátor, který rychle hledá společné body, propojuje strany a vede náročné téma ke konkrétnímu dalšímu kroku.</p>
         <button class="theme-toggle entry-theme" type="button" onclick="toggleTheme()">${themeLabel()}</button>
       </div>
       <form id="authForm" class="entry-form auth-form">
@@ -250,7 +252,7 @@ function renderProfile() {
         <div>
           <p class="room-kicker">${escapeHtml(profile.name)}</p>
           <h1>Vaše dohody</h1>
-          <p class="subtitle">Každý konflikt má vlastní místnost. Nejdřív si ujasněte téma, pak pozvěte další účastníky a nechte AI vést soukromé rozhovory ke kompromisu.</p>
+          <p class="subtitle">Každé téma má vlastní místnost. Nejdřív si ujasněte, co chcete vyřešit, pak pozvěte další účastníky a nechte AI vést soukromé rozhovory ke kompromisu.</p>
         </div>
         <div class="profile-metrics" aria-label="Souhrn profilu">
           <span><strong>${activeRooms.length}</strong> aktivní</span>
@@ -262,7 +264,7 @@ function renderProfile() {
         <summary>Nová dohoda</summary>
         <form id="newRoomForm" class="new-room-form quiet-new-form">
           <label>
-            Název konfliktu
+            Téma, které chcete vyřešit
             <input id="newRoomTitle" type="text" placeholder="Např. rozdělení odpovědností" />
           </label>
           <label>
@@ -341,9 +343,8 @@ function renderJoinRoom(room, options = {}) {
       <div class="entry-title">
         ${logoMark()}
         <h1>Připojit se</h1>
-        <p class="subtitle">Byli jste pozváni do místnosti „${escapeHtml(room.title)}“. Zadejte jméno, pod kterým budete v konfliktu vystupovat.</p>
+        <p class="subtitle">Byli jste pozváni do místnosti „${escapeHtml(room.title)}“. Zadejte jméno, pod kterým budete v dohodě vystupovat.</p>
         ${state.inviteError ? `<p class="auth-error">${escapeHtml(state.inviteError)}</p>` : ""}
-        ${conflictMeter(room)}
       </div>
       <form id="joinForm" class="entry-form">
         <label>
@@ -390,10 +391,10 @@ function roomCard(room) {
         </div>
         <span class="chip heat">${escapeHtml(room.archived ? "Archiv" : room.status)}</span>
       </div>
-      ${conflictMeter(room)}
       <div class="chips">
         <span class="chip blue">${escapeHtml(room.type)}</span>
         <span class="chip">${room.participants.length} účastníci</span>
+        <span class="chip">${escapeHtml(room.archived ? "Archiv" : room.status)}</span>
       </div>
       <div class="card-actions">
         <div class="button-row">
@@ -427,15 +428,14 @@ function agreementRow(room, expandedRoomId) {
       </button>
       ${expanded ? `
         <div class="agreement-detail">
-          ${conflictMeter(room)}
           <div class="detail-grid">
             <div>
               <p class="meta">Typ</p>
               <strong>${escapeHtml(room.type)}</strong>
             </div>
             <div>
-              <p class="meta">Index dohody</p>
-              <strong>${room.progress}%</strong>
+              <p class="meta">Stav</p>
+              <strong>${escapeHtml(room.status || "Aktivní")}</strong>
             </div>
             <div>
               <p class="meta">Účastníci</p>
@@ -462,11 +462,10 @@ function renderRoom() {
     renderJoinRoom(room);
     return;
   }
-  const theme = conflictTheme(room);
   const inviteUrl = inviteLink(room);
   app.innerHTML = `
     ${topbar()}
-    <section class="room-shell minimal-room" style="${theme.style}">
+    <section class="room-shell minimal-room clean-room">
       <div class="room-focus">
         <button class="ghost-btn back-link" type="button" id="backToProfile">Zpět na profil</button>
 
@@ -475,11 +474,10 @@ function renderRoom() {
             <p class="room-kicker">Téma, které chcete vyřešit</p>
             <h1>${escapeHtml(room.title)}</h1>
             <p class="subtitle">${escapeHtml(room.goal)}</p>
-            ${conflictMeter(room)}
           </div>
           <div class="room-hero-actions">
             <div class="participant-strip" aria-label="Účastníci místnosti">
-              <span class="chip heat">${room.participants.length}/10 účastníků</span>
+              <span class="chip">${room.participants.length}/10 účastníků</span>
               <div class="chips">${room.participants.map((name) => `<span class="chip blue">${escapeHtml(name)}</span>`).join("")}</div>
             </div>
             <button id="copyInvite" class="primary-btn invite-primary" type="button">Pozvat dalšího účastníka</button>
@@ -492,14 +490,12 @@ function renderRoom() {
               <div>
                 <p class="room-kicker">Hlavní prostor</p>
                 <h2>${escapeHtml(roomParticipantName(room.id))} + AI mediátor</h2>
-                <p class="meta">Napište napřímo, co je potřeba. Mediátor z toho vytáhne podstatu, propojí ji s ostatními a předá bezpečné jádro.</p>
+                <p class="meta">Napište napřímo, co je potřeba. Mediátor odpoví vám, ostatním předá srozumitelnou verzi vašeho sdělení a drží směr k férové dohodě.</p>
               </div>
               <div class="section-actions">
                 <span class="chip ${state.aiConfigured ? "" : "amber"}">${state.aiConfigured ? "AI mediátor online" : "Demo mediátor"}</span>
               </div>
             </div>
-            ${mediationProcessPanel(room)}
-            ${privateBridgePanel(room)}
             <div class="messages private-main-stream" id="privateMessages">${privateConversation(room).map((message, index) => messageView({ ...message, me: !message.ai }, index)).join("")}</div>
             <form id="privateMediatorForm" class="composer private-main-composer">
               <div class="composer-box">
@@ -507,10 +503,6 @@ function renderRoom() {
                 <div class="composer-tools" aria-label="Ovládání zprávy">
                   <button id="clearDraft" class="icon-btn" type="button" title="Smazat rozepsaný text">×</button>
                   <button class="primary-btn send-arrow" type="submit" title="Poslat zprávu" aria-label="Poslat zprávu">→</button>
-                </div>
-                <div class="composer-tools-left" aria-label="Přidat podklad">
-                  <button id="openSourceDialog" class="icon-btn add-source-btn" type="button" title="Přidat zdroj" aria-label="Přidat zdroj">+</button>
-                  <button id="toggleInitiator" class="initiator-chat-btn ${mediationSettings(room).initiatorMode ? "active" : ""}" type="button" title="Iniciátor zapojuje účastníky">Iniciátor</button>
                 </div>
               </div>
             </form>
@@ -531,23 +523,14 @@ function renderRoom() {
               <div id="toolArea" class="tool-area">${toolContent(room)}</div>
             </details>
           </section>
-
-          <aside class="room-side-panel" aria-label="Nastavení mediace">
-            ${mediationSettingsPanel(room)}
-            <div class="invite-box quiet-invite">
-              <strong>Pozvánka</strong>
-              <button id="copyInviteSide" class="secondary-btn invite-copy-btn" type="button">Pozvěte dalšího účastníka</button>
-              <p class="meta">Další účastníci se objeví až po vstupu přes tento odkaz.</p>
-            </div>
-          </aside>
         </div>
         <button class="scroll-composer-btn" id="scrollToComposer" type="button" aria-label="Sjet dolů k psaní zprávy">↓</button>
       </div>
     </section>
-    ${state.sourceDialogOpen ? sourceDialog(room) : ""}
   `;
 
   bindRoomEvents(room, inviteUrl);
+  scheduleMediatorNudge(room);
 }
 
 function renderAdmin() {
@@ -555,7 +538,7 @@ function renderAdmin() {
   const activeRooms = state.rooms.filter((room) => !room.archived);
   const archivedRooms = state.rooms.filter((room) => room.archived);
   const participants = [...new Set(state.rooms.flatMap((room) => room.participants || []))];
-  const needsAttention = state.rooms.filter((room) => !room.archived && (room.progress || 0) < 35);
+  const needsAttention = state.rooms.filter((room) => !room.archived && participantInputCountClient(room) < Math.max(1, Math.min(2, room.participants?.length || 1)));
   const filteredRooms = adminFilteredRooms();
   const selectedRoom = state.rooms.find((room) => room.id === state.adminRoomId) || filteredRooms[0] || state.rooms[0];
   if (selectedRoom) state.adminRoomId = selectedRoom.id;
@@ -588,7 +571,7 @@ function renderAdmin() {
         <section class="tool-card admin-card">
           <h3>Rychlé priority</h3>
           <ul>
-            ${needsAttention.length ? needsAttention.map((room) => `<li>${escapeHtml(room.title)}: nízký index dohody (${room.progress || 0} %)</li>`).join("") : "<li>Žádná místnost teď nevypadá zaseknutě.</li>"}
+            ${needsAttention.length ? needsAttention.map((room) => `<li>${escapeHtml(room.title)}: čeká na další konkrétní vstup účastníků</li>`).join("") : "<li>Žádná místnost teď nevypadá zaseknutě.</li>"}
           </ul>
         </section>
       </div>
@@ -646,7 +629,7 @@ function renderAdmin() {
 function adminFilteredRooms() {
   if (state.adminFilter === "all") return state.rooms;
   if (state.adminFilter === "archived") return state.rooms.filter((room) => room.archived);
-  if (state.adminFilter === "attention") return state.rooms.filter((room) => !room.archived && (room.progress || 0) < 35);
+  if (state.adminFilter === "attention") return state.rooms.filter((room) => !room.archived && participantInputCountClient(room) < Math.max(1, Math.min(2, room.participants?.length || 1)));
   return state.rooms.filter((room) => !room.archived);
 }
 
@@ -663,7 +646,7 @@ function adminRoomRow(room) {
         <p class="meta">${escapeHtml(room.type || "Místnost")} · ${escapeHtml(room.stage || room.status || "bez stavu")}${room.locked ? " · uzamčeno" : ""}</p>
       </div>
       <span>${room.participants?.length || 0} účastníků</span>
-      <span>${room.progress || 0} %</span>
+      <span>${escapeHtml(room.status || "Aktivní")}</span>
       <span>${settings.style}${settings.initiatorMode ? " + iniciátor" : ""}</span>
       <button class="secondary-btn" type="button" data-admin-select-room="${room.id}">Detail</button>
     </article>
@@ -682,7 +665,7 @@ function adminRoomDetail(room) {
         </div>
       </div>
       <div class="admin-detail-grid">
-        <span><strong>${room.progress || 0}%</strong> index dohody</span>
+        <span><strong>${escapeHtml(room.status || "Aktivní")}</strong> stav</span>
         <span><strong>${room.participants?.length || 0}</strong> účastníků</span>
         <span><strong>${room.locked ? "Zamčeno" : "Otevřeno"}</strong> pozvánky</span>
       </div>
@@ -723,10 +706,10 @@ function toolTab(id, label) {
 function mediationSettings(room) {
   return {
     style: room.mediationSettings?.style || "warm",
-    autoBridge: room.mediationSettings?.autoBridge !== false,
-    adaptToRecipient: room.mediationSettings?.adaptToRecipient !== false,
+    autoBridge: true,
+    adaptToRecipient: true,
     variants: Number(room.mediationSettings?.variants ?? 3),
-    initiatorMode: room.mediationSettings?.initiatorMode === true,
+    initiatorMode: false,
   };
 }
 
@@ -925,7 +908,7 @@ function toolContent(room) {
         <h3>Role AI mediátora</h3>
         <ul>
           <li>Mluví soukromě s každou stranou.</li>
-          <li>Pomáhá pojmenovat potřeby za konfliktem.</li>
+          <li>Pomáhá pojmenovat potřeby za napětím mezi stranami.</li>
           <li>Naznačuje možnou perspektivu druhé strany bez prozrazení soukromí.</li>
           <li>Předává ostatním stranám bezpečnější verzi toho, co je potřeba sdělit.</li>
         </ul>
@@ -1622,6 +1605,39 @@ function roomActivitySignature(room) {
     room.progress || 0,
     room.stage || "",
   ].join("|");
+}
+
+function participantInputCountClient(room) {
+  const participants = room.participants || [];
+  return participants.filter((name) => (
+    room.privateConversations?.[name] || []
+  ).some((message) => !message.ai && String(message.text || "").trim())).length;
+}
+
+function scheduleMediatorNudge(room) {
+  const author = roomParticipantName(room.id);
+  if (!author || state.requestInProgress) return;
+  const key = `${room.id}:${author}`;
+  if (state.idleTimers[key]) clearTimeout(state.idleTimers[key]);
+  const conversation = privateConversation(room);
+  const hasOwnInput = conversation.some((message) => !message.ai && message.author === author && String(message.text || "").trim());
+  const hasRecentNudge = conversation.slice(-3).some((message) => message.idleNudge);
+  if (hasOwnInput || hasRecentNudge || state.idleNudges[key]) return;
+  state.idleTimers[key] = setTimeout(async () => {
+    const currentRoom = activeRoom();
+    const currentAuthor = roomParticipantName(currentRoom.id);
+    if (currentRoom.id !== room.id || currentAuthor !== author || state.requestInProgress) return;
+    state.idleNudges[key] = true;
+    try {
+      const previousSignature = state.roomActivitySignatures[currentRoom.id] || roomActivitySignature(currentRoom);
+      await apiAction(`/api/rooms/${currentRoom.id}/nudge`, { author });
+      await loadRemoteState();
+      maybeNotifyRoomActivity(previousSignature);
+      renderRoom();
+    } catch {
+      state.idleNudges[key] = false;
+    }
+  }, 18000);
 }
 
 function rememberRoomActivity() {
