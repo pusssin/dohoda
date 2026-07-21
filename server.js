@@ -421,19 +421,22 @@ async function handleApi(req, res, url) {
       }
       const conversation = ensurePrivateConversation(room, author);
       const topic = mediationActivityTopic(text);
-      conversation.push({ author, text, decision: "Soukromý vstup účastníka" });
-      addParticipantActivityNotices(room, author, text);
+      const turnId = `turn-${randomToken()}`;
+      conversation.push({ author, text, decision: "Soukromý vstup účastníka", turnId });
+      const immediateTurn = fallbackPrivateMediationTurn(room, text, author);
+      conversation.push({
+        author: "AI mediátor",
+        text: immediateTurn.authorReply,
+        ai: true,
+        turnId,
+        decision: "Okamžitá reakce mediátora",
+      });
+      applyMediatedRecipientUpdates(room, author, immediateTurn.recipientMessages, turnId);
       addDiary(room, "AI mediátor", `${author} právě řeší s mediátorem: ${topic}. Ostatní uvidí jen bezpečnou podstatu, ne syrový soukromý text.`, "private-topic");
       await savePersistentStore();
       const mediationTurn = await processPrivateMediationTurn(room, text, author);
-      conversation.push({
-        author: "AI mediátor",
-        text: mediationTurn.authorReply,
-        ai: true,
-        decision: "Soukromá podpora a návrhy formulací",
-      });
-      applyMediatedRecipientUpdates(room, author, mediationTurn.recipientMessages);
-      addAuthorDistributionNotice(room, author);
+      replaceAuthorMediatorReply(conversation, turnId, mediationTurn.authorReply);
+      applyMediatedRecipientUpdates(room, author, mediationTurn.recipientMessages, turnId);
       addDiary(room, "AI mediátor", `Mediátor odpověděl účastníkovi ${author} a rozeslal ostatním bezpečné shrnutí podstaty.`, "mediator-response");
       updateMap(room, text);
       moveProgress(room, 5);
@@ -967,6 +970,7 @@ function normalizeStore() {
 function ensureRoomDefaults(room) {
   room.mediationSettings = sanitizeMediationSettings(room.mediationSettings || {});
   if (!room.privateConversations) room.privateConversations = {};
+  removeStaleActivityNotices(room);
   if (!room.inviteToken) room.inviteToken = randomToken();
   if (typeof room.locked !== "boolean") room.locked = false;
   if (!room.stage) room.stage = room.progress >= 80 ? "Návrh dohody" : room.progress >= 45 ? "Hledání mostu" : "Vstupní mapování";
@@ -985,6 +989,20 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.map.needs)) room.map.needs = [];
   if (!Array.isArray(room.sources)) room.sources = [];
   if (typeof room.protocol !== "string") room.protocol = "";
+}
+
+function removeStaleActivityNotices(room) {
+  for (const [participant, conversation] of Object.entries(room.privateConversations || {})) {
+    if (!Array.isArray(conversation)) continue;
+    room.privateConversations[participant] = conversation.filter((message) => {
+      const text = String(message?.text || "");
+      return !(
+        message?.activity
+        && message?.decision === "Neutrální informace o probíhající mediaci"
+        && text.includes("Připravuji bezpečnou verzi podstaty")
+      );
+    });
+  }
 }
 
 function publicStoreFor(viewer = "", user = null) {
@@ -1680,13 +1698,7 @@ async function privateMediatorReply(room, text, author) {
 
 async function processPrivateMediationTurn(room, text, author) {
   const recipients = room.participants.filter((name) => name && name !== author);
-  const fallback = {
-    authorReply: fallbackPrivateMediatorReply(room, text, author),
-    recipientMessages: recipients.map((recipient) => ({
-      recipient,
-      message: fallbackRecipientBridgeReply(room, text, author, recipient),
-    })),
-  };
+  const fallback = fallbackPrivateMediationTurn(room, text, author);
 
   if (!openaiApiKey) return fallback;
 
@@ -1710,19 +1722,44 @@ async function processPrivateMediationTurn(room, text, author) {
   }
 }
 
-function applyMediatedRecipientUpdates(room, author, recipientMessages) {
+function fallbackPrivateMediationTurn(room, text, author) {
+  const recipients = room.participants.filter((name) => name && name !== author);
+  return {
+    authorReply: fallbackPrivateMediatorReply(room, text, author),
+    recipientMessages: recipients.map((recipient) => ({
+      recipient,
+      message: fallbackRecipientBridgeReply(room, text, author, recipient),
+    })),
+  };
+}
+
+function replaceAuthorMediatorReply(conversation, turnId, text) {
+  const reply = conversation.find((message) => message.turnId === turnId && message.ai);
+  if (!reply) return;
+  reply.text = String(text || reply.text).trim() || reply.text;
+  reply.decision = "Soukromá odpověď mediátora";
+}
+
+function applyMediatedRecipientUpdates(room, author, recipientMessages, turnId = "") {
   for (const item of recipientMessages || []) {
     const recipient = cleanName(item.recipient);
     if (!recipient || recipient === author || !room.participants.includes(recipient)) continue;
     const message = String(item.message || "").trim();
     if (!message) continue;
-    ensurePrivateConversation(room, recipient).push({
+    const conversation = ensurePrivateConversation(room, recipient);
+    const existing = turnId
+      ? conversation.find((entry) => entry.turnId === turnId && entry.mediatedFrom === author)
+      : null;
+    const update = {
       author: "AI mediátor",
       text: message,
       ai: true,
       mediatedFrom: author,
+      turnId,
       decision: "Bezpečné shrnutí pro tohoto účastníka",
-    });
+    };
+    if (existing) Object.assign(existing, update);
+    else conversation.push(update);
   }
 }
 
@@ -1791,6 +1828,8 @@ function mediationActivityTopic(text) {
     .trim();
   const lower = clean.toLowerCase();
   if (!clean) return "nový vstup k dohodě";
+  if (isGreetingMessage(clean)) return "pozdrav a navázání kontaktu";
+  if (isIncompleteDisclosure(clean)) return "účastník chce nejdřív pojmenovat, co mu vadí";
   if (lower.includes("ignor") || lower.includes("nereag") || lower.includes("neodpov")) {
     return "potřeba nebýt přehlížen/a a dostat srozumitelnou reakci";
   }
@@ -1929,6 +1968,8 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
         role: "system",
         content: [
           "Jsi Dohoda, nezaujatý AI mediátor. Vedeš soukromý dialog s jedním účastníkem a současně bezpečně propojuješ všechny strany.",
+          "Reaguj na každou zprávu bez výjimky, včetně pozdravu, jednoslovné odpovědi nebo neurčité poznámky. Nikdy nenechávej účastníka bez přímé reakce.",
+          "Na pozdrav odpověz přirozeně a krátce. U obsahově prázdné zprávy nic neinterpretuj; lehce účastníka vyzvi k první konkrétní větě.",
           "Nejdřív přímo reaguj na otázku nebo sdělení autora. Otázku nikdy neobcházej procesní frází.",
           "Soukromá odpověď má být lidská, konkrétní a stručná. Aktivně účastníka vtahuj do rozhovoru, ale nezatěžuj ho sérií otázek.",
           "Pokud není jasné, co účastník považuje za problém, čeho chce dosáhnout nebo co od ostatních potřebuje, polož právě jednu konkrétní doplňující otázku.",
@@ -1981,7 +2022,7 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
     },
     temperature: 0.55,
     max_output_tokens: Math.min(900, 280 + recipients.length * 130),
-  }, 6500);
+  }, 3800);
 
   if (!response.ok) {
     const detail = await response.text();
@@ -2243,6 +2284,29 @@ function fallbackPrivateMediatorReply(room, text, author) {
   const otherLabel = others.length ? others.join(", ") : "druhá strana";
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
 
+  if (isGreetingMessage(text)) {
+    return [
+      "Ahoj, jsem tady a reaguji na každou zprávu.",
+      others.length
+        ? "Začněme úplně jednoduše: co by podle vás měla druhá strana o vašem pohledu pochopit? Stačí jedna věta."
+        : "Začněme úplně jednoduše: co by se podle vás mělo změnit, aby tato dohoda dávala smysl? Stačí jedna věta.",
+    ].join("\n");
+  }
+
+  if (isIncompleteDisclosure(text)) {
+    return [
+      "Ještě nevím, co vám vadí, ale chci tomu porozumět.",
+      "Co konkrétně vám v té situaci vadí nejvíc? Stačí to napsat vlastními slovy; zatím nic konkrétního ostatním nepředávám.",
+    ].join("\n");
+  }
+
+  if (containsPersonLabel(text)) {
+    return [
+      "Rozumím, že chování druhé strany teď vnímáte negativně. Nechci ale předat nálepku místo podstaty.",
+      "Co konkrétně udělala nebo neudělala, z čeho ten pocit vznikl? Stačí jeden příklad; potom ho převedu do srozumitelné potřeby nebo prosby.",
+    ].join("\n");
+  }
+
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu")) {
     return withDraftVariants(settings, [
       "Podstata: chcete vědět, co se tu děje s vašimi slovy.",
@@ -2413,6 +2477,24 @@ function safeNewcomerTopics(room) {
 
 function fallbackRecipientBridgeReply(room, text, author, recipient) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  if (isGreetingMessage(text)) {
+    return [
+      `${author} se právě zapojil/a do rozhovoru. Zatím nezazněl konkrétní postoj, takže nic nedomýšlím.`,
+      `Mezitím můžete vy, ${recipient}, jednou větou napsat, co by podle vás měla tato dohoda hlavně vyřešit.`,
+    ].join("\n");
+  }
+  if (isIncompleteDisclosure(text)) {
+    return [
+      `${author} naznačil/a, že chce pojmenovat něco důležitého, ale zatím to neupřesnil/a. Proto vám nepředávám domněnku místo obsahu.`,
+      `Až zazní konkrétní podstata, shrnu ji. Vy zatím můžete jednou větou doplnit, co je v tématu nejdůležitější pro vás, ${recipient}.`,
+    ].join("\n");
+  }
+  if (containsPersonLabel(text)) {
+    return [
+      `${author} teď popsal/a negativní dojem z chování druhé strany, ale zatím neuvedl/a konkrétní situaci. Nepředávám vám proto nálepku jako fakt.`,
+      `Až ji upřesní, shrnu skutečnou podstatu. Vy, ${recipient}, můžete mezitím jednou větou napsat, co pro vás znamená ochota spolupracovat.`,
+    ].join("\n");
+  }
   const authenticity = settings.style === "authentic"
     ? "Ponechávám víc původní energie sdělení, ale odstraňuji to, co by zbytečně zraňovalo."
     : "Překládám to do klidnější řeči, aby šlo lépe slyšet podstatu.";
@@ -2422,6 +2504,22 @@ function fallbackRecipientBridgeReply(room, text, author, recipient) {
     "Spojka: méně domýšlení, víc konkrétních pravidel.",
     "Další tah: napište jednou větou, co z toho umíte uznat, a jednu věc, kterou potřebujete vy.",
   ].join("\n");
+}
+
+function isGreetingMessage(text) {
+  const value = String(text || "").trim().toLowerCase().replace(/[!.,?\s]+$/u, "");
+  return /^(ahoj|čau|cau|zdar|nazdar|dobrý den|dobry den|hello|hi|hey)$/u.test(value);
+}
+
+function isIncompleteDisclosure(text) {
+  const value = String(text || "").trim().toLowerCase();
+  return /^(víš|vis|vís|vite|víte)\s+(co|cože)\s+(mi|mě|mne|nám)\s+(vadí|vadi)[?!.\s]*$/u.test(value)
+    || /^(můžu|muzu|mohu)\s+(ti|vám)\s+(něco|neco)\s+(říct|rict)[?!.\s]*$/u.test(value);
+}
+
+function containsPersonLabel(text) {
+  const value = String(text || "").trim().toLowerCase();
+  return /(?:^|[\s,])že\s+[\p{L}][\p{L}-]*\s+je\s+(neochotn\p{L}*|lín\p{L}*|sobeck\p{L}*|arogantn\p{L}*|nespolehliv\p{L}*|hrozn\p{L}*|nemožn\p{L}*)(?=[\s.,!?]|$)/u.test(value);
 }
 
 function updateMap(room, text) {
