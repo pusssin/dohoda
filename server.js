@@ -437,6 +437,7 @@ async function handleApi(req, res, url) {
       const mediationTurn = await processPrivateMediationTurn(room, text, author);
       replaceAuthorMediatorReply(conversation, turnId, mediationTurn.authorReply);
       applyMediatedRecipientUpdates(room, author, mediationTurn.recipientMessages, turnId);
+      applyRelationshipSignals(room, mediationTurn.relationshipSignals);
       addDiary(room, "AI mediátor", `Mediátor odpověděl účastníkovi ${author} a rozeslal ostatním bezpečné shrnutí podstaty.`, "mediator-response");
       updateMap(room, text);
       moveProgress(room, 5);
@@ -989,6 +990,67 @@ function ensureRoomDefaults(room) {
   if (!Array.isArray(room.map.needs)) room.map.needs = [];
   if (!Array.isArray(room.sources)) room.sources = [];
   if (typeof room.protocol !== "string") room.protocol = "";
+  ensureRelationshipProfile(room);
+}
+
+function ensureRelationshipProfile(room) {
+  if (!room.relationshipProfile || typeof room.relationshipProfile !== "object") {
+    room.relationshipProfile = { relationships: [] };
+  }
+  if (!Array.isArray(room.relationshipProfile.relationships)) {
+    room.relationshipProfile.relationships = [];
+  }
+  const participants = Array.isArray(room.participants) ? room.participants.filter(Boolean) : [];
+  for (let first = 0; first < participants.length; first += 1) {
+    for (let second = first + 1; second < participants.length; second += 1) {
+      const pair = normalizedRelationshipPair(participants[first], participants[second]);
+      const exists = room.relationshipProfile.relationships.some((item) => (
+        normalizedRelationshipPair(item.participantA, item.participantB).key === pair.key
+      ));
+      if (!exists) {
+        room.relationshipProfile.relationships.push({
+          participantA: pair.participantA,
+          participantB: pair.participantB,
+          relationshipType: String(room.type || "zatím nejasný vztah"),
+          dynamic: "Pracovní profil se teprve tvoří z prvních konkrétních vstupů.",
+          sharedGoal: String(room.goal || "najít přijatelnou dohodu"),
+          missingInformation: "Jak účastníci vztah popisují a co od něj potřebují.",
+          confidence: "low",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+  }
+}
+
+function normalizedRelationshipPair(participantA, participantB) {
+  const names = [cleanName(participantA), cleanName(participantB)].sort((a, b) => a.localeCompare(b, "cs"));
+  return { participantA: names[0], participantB: names[1], key: names.join("::") };
+}
+
+function applyRelationshipSignals(room, signals) {
+  ensureRelationshipProfile(room);
+  const participants = new Set(room.participants || []);
+  for (const signal of Array.isArray(signals) ? signals : []) {
+    const pair = normalizedRelationshipPair(signal?.participantA, signal?.participantB);
+    if (!pair.participantA || !pair.participantB || pair.participantA === pair.participantB) continue;
+    if (!participants.has(pair.participantA) || !participants.has(pair.participantB)) continue;
+    const relationship = room.relationshipProfile.relationships.find((item) => (
+      normalizedRelationshipPair(item.participantA, item.participantB).key === pair.key
+    ));
+    const update = {
+      participantA: pair.participantA,
+      participantB: pair.participantB,
+      relationshipType: String(signal.relationshipType || relationship?.relationshipType || "zatím nejasný vztah").trim(),
+      dynamic: String(signal.dynamic || relationship?.dynamic || "").trim(),
+      sharedGoal: String(signal.sharedGoal || relationship?.sharedGoal || room.goal || "").trim(),
+      missingInformation: String(signal.missingInformation || relationship?.missingInformation || "").trim(),
+      confidence: ["low", "medium", "high"].includes(signal.confidence) ? signal.confidence : "low",
+      updatedAt: new Date().toISOString(),
+    };
+    if (relationship) Object.assign(relationship, update);
+    else room.relationshipProfile.relationships.push(update);
+  }
 }
 
 function removeStaleActivityNotices(room) {
@@ -1032,6 +1094,7 @@ function publicRoomFor(room, viewer = "") {
   safeRoom.sourceBytes = roomSourceBytes(room);
   safeRoom.sourceLimit = maxRoomSourceBytes;
   safeRoom.protocol = generateProtocol(room);
+  delete safeRoom.relationshipProfile;
   return safeRoom;
 }
 
@@ -1707,7 +1770,7 @@ async function processPrivateMediationTurn(room, text, author) {
     const byRecipient = new Map(
       (turn.recipientMessages || [])
         .filter((item) => item && recipients.includes(cleanName(item.recipient)) && String(item.message || "").trim())
-        .map((item) => [cleanName(item.recipient), String(item.message).trim()]),
+        .map((item) => [cleanName(item.recipient), sanitizeRecipientReframe(item.message, text, author)]),
     );
     return {
       authorReply: String(turn.authorReply || "").trim() || fallback.authorReply,
@@ -1715,11 +1778,44 @@ async function processPrivateMediationTurn(room, text, author) {
         recipient,
         message: byRecipient.get(recipient) || fallbackRecipientBridgeReply(room, text, author, recipient),
       })),
+      relationshipSignals: Array.isArray(turn.relationshipSignals) ? turn.relationshipSignals : [],
     };
   } catch (error) {
     console.warn("OpenAI mediation turn fallback:", error.message);
     return fallback;
   }
+}
+
+function sanitizeRecipientReframe(candidate, originalText, author) {
+  const original = String(originalText || "").trim();
+  let message = String(candidate || "").trim();
+  if (!message) return original;
+  message = message.replace(new RegExp(`^${escapeRegExp(author)}\\s*:\\s*`, "iu"), "").trim();
+  const processCommentary = /(?:ai\s+medi[aá]tor|p(?:ř|r)episuji|p(?:ř|r)eformulov|shrnuji|bezpe(?:č|c)n(?:á|e|ou)\s+(?:verze|podstata)|p(?:ů|u)vodn(?:í|i)\s+(?:text|zpr[aá]va)|autor\s+(?:pr[aá]v(?:ě|e)\s+)?komunikuje)/iu;
+  if (processCommentary.test(message)) return fallbackRecipientBridgeReply(null, original, author, "");
+
+  const sourceTokens = semanticTokens(original);
+  const messageTokens = new Set(semanticTokens(message));
+  if (sourceTokens.length) {
+    const overlap = sourceTokens.filter((token) => messageTokens.has(token)).length;
+    const required = sourceTokens.length <= 4 ? 1 : Math.max(2, Math.ceil(sourceTokens.length * 0.25));
+    if (overlap < required) return fallbackRecipientBridgeReply(null, original, author, "");
+  }
+  return message;
+}
+
+function semanticTokens(value) {
+  const stopWords = new Set(["aby", "ale", "ani", "bych", "bylo", "co", "do", "ho", "je", "jsem", "jsi", "mi", "na", "ne", "od", "se", "si", "tak", "ten", "to", "ve", "ze"]);
+  return unique(String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .match(/[a-z0-9]{3,}/g) || [])
+    .filter((token) => !stopWords.has(token));
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function fallbackPrivateMediationTurn(room, text, author) {
@@ -1730,6 +1826,7 @@ function fallbackPrivateMediationTurn(room, text, author) {
       recipient,
       message: fallbackRecipientBridgeReply(room, text, author, recipient),
     })),
+    relationshipSignals: [],
   };
 }
 
@@ -1756,7 +1853,7 @@ function applyMediatedRecipientUpdates(room, author, recipientMessages, turnId =
       ai: true,
       mediatedFrom: author,
       turnId,
-      decision: "Bezpečné shrnutí pro tohoto účastníka",
+      decision: "",
     };
     if (existing) Object.assign(existing, update);
     else conversation.push(update);
@@ -1974,11 +2071,14 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
           "Soukromá odpověď má být lidská, konkrétní a stručná. Aktivně účastníka vtahuj do rozhovoru, ale nezatěžuj ho sérií otázek.",
           "Pokud není jasné, co účastník považuje za problém, čeho chce dosáhnout nebo co od ostatních potřebuje, polož právě jednu konkrétní doplňující otázku.",
           "Pokud je záměr jasný, neptej se znovu na totéž. Navrhni další krok a zakonči jednoduchou výzvou, na kterou lze snadno odpovědět.",
-          "Pro každého dalšího účastníka napiš samostatnou zprávu, která sdělí skutečnou podstatu nového vstupu: téma, potřebu nebo návrh autora a možnou spojku k dohodě.",
-          "Každou zprávu pro dalšího účastníka zakonči jednou lehkou a konkrétní výzvou k reakci, například volbou, krátkou otázkou nebo žádostí o jednu větu.",
-          "Neposílej jen informaci, že autor komunikuje. Neprozrazuj doslovný soukromý text, urážky, citlivé detaily ani domněnky o motivech.",
-          "Pokud autor výslovně žádá, aby určitá věc zůstala soukromá, respektuj to a ostatním pouze sděl bezpečnou obecnou podstatu, nebo že zatím není co předat.",
+          "Automatické přerámování je již schválené nastavením místnosti. Nikdy se autora neptej, zda smíš zprávu přepsat nebo předat, a neoznamuj mu, že ji právě předáváš.",
+          "Pro každého dalšího účastníka napiš obsahově věrnou reformulaci v první osobě, jako by ji stále říkal původní autor. Zachovej konkrétní fakta, osoby, požadavky, nejistotu, emoci i intenzitu sdělení.",
+          "Odstraň jen urážky, nálepky a zbytečně útočnou formu. Nenahrazuj konkrétní obsah obecnými potřebami, nevymýšlej motivy, společné cíle, pravidla ani návrhy, které autor neuvedl.",
+          "Zpráva pro příjemce nesmí obsahovat úvod, komentář ani vysvětlení mediátora. Nikdy nepiš, že něco přepisuješ, shrnuješ, filtruješ, bezpečně předáváš nebo že autor právě komunikuje s mediátorem.",
+          "Pokud je původní sdělení neurčité, ponech neurčitost a nic nedoplňuj. Pokud je to jen pozdrav, příjemci předej jen přirozený pozdrav.",
+          "Pokud autor výslovně žádá, aby konkrétní věc zůstala soukromá, tuto věc příjemcům neposílej.",
           "Nikdy nevydávej soukromé informace jednoho příjemce jinému. Kontext příjemce používej jen pro přizpůsobení tónu.",
+          "Z prvních indicií průběžně sestavuj pracovní profil vztahů. Rozlišuj fakta od hypotéz, nepřeháněj jistotu a u každé dvojice uveď jednu nejdůležitější chybějící informaci.",
           "Odpovídej česky. Nevysvětluj svůj interní postup.",
           mediationPlaybook,
           styleInstruction(room),
@@ -2003,7 +2103,7 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
             },
             recipientMessages: {
               type: "array",
-              description: "Jedna bezpečně přerámovaná obsahová zpráva pro každého dalšího účastníka.",
+              description: "Jedna významově věrná reformulace v první osobě pro každého dalšího účastníka, bez komentáře mediátora.",
               items: {
                 type: "object",
                 properties: {
@@ -2014,14 +2114,32 @@ async function openaiPrivateMediationTurn(room, text, author, recipients) {
                 additionalProperties: false,
               },
             },
+            relationshipSignals: {
+              type: "array",
+              description: "Aktualizované pracovní hypotézy o vztazích mezi účastníky. Nejsou zobrazovány účastníkům jako fakta.",
+              items: {
+                type: "object",
+                properties: {
+                  participantA: { type: "string" },
+                  participantB: { type: "string" },
+                  relationshipType: { type: "string" },
+                  dynamic: { type: "string" },
+                  sharedGoal: { type: "string" },
+                  missingInformation: { type: "string" },
+                  confidence: { type: "string", enum: ["low", "medium", "high"] },
+                },
+                required: ["participantA", "participantB", "relationshipType", "dynamic", "sharedGoal", "missingInformation", "confidence"],
+                additionalProperties: false,
+              },
+            },
           },
-          required: ["authorReply", "recipientMessages"],
+          required: ["authorReply", "recipientMessages", "relationshipSignals"],
           additionalProperties: false,
         },
       },
     },
     temperature: 0.55,
-    max_output_tokens: Math.min(900, 280 + recipients.length * 130),
+    max_output_tokens: Math.min(1200, 380 + recipients.length * 180),
   }, 3800);
 
   if (!response.ok) {
@@ -2141,6 +2259,7 @@ function buildPrivateMediatorContext(room, text, author) {
 
 function buildPrivateMediationTurnContext(room, text, author, recipients) {
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
+  ensureRelationshipProfile(room);
   const authorHistory = ensurePrivateConversation(room, author)
     .slice(-7)
     .map((message) => `${message.author}: ${message.text}`)
@@ -2152,6 +2271,16 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
       .join("\n");
     return [`Příjemce: ${recipient}`, history || "- bez předchozího vstupu"].join("\n");
   }).join("\n\n");
+  const relationshipContext = room.relationshipProfile.relationships
+    .map((relationship) => [
+      `${relationship.participantA} + ${relationship.participantB}`,
+      `typ: ${relationship.relationshipType}`,
+      `dynamika: ${relationship.dynamic}`,
+      `společný cíl: ${relationship.sharedGoal}`,
+      `chybí zjistit: ${relationship.missingInformation}`,
+      `jistota: ${relationship.confidence}`,
+    ].join(" | "))
+    .join("\n");
 
   return [
     `Místnost: ${room.title}`,
@@ -2170,6 +2299,9 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
     `Otevřené body: ${room.map.open.join("; ") || "zatím žádné"}`,
     `Potřeby: ${room.map.needs.join("; ") || "zatím žádné"}`,
     "",
+    "Pracovní profil vztahů (hypotézy, nikoli potvrzená fakta):",
+    relationshipContext || "- zatím bez profilu",
+    "",
     "Soukromý rozhovor s autorem:",
     authorHistory || "- bez historie",
     "",
@@ -2181,12 +2313,11 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
     [
       `Pole recipientMessages musí obsahovat přesně ${recipients.length} položek, jednu pro každé jméno z tohoto seznamu: ${recipients.join(", ") || "prázdný seznam"}.`,
       settings.autoBridge
-        ? "Každá zpráva příjemci musí popsat obsahovou podstatu vstupu autora, ne pouze jeho aktivitu."
-        : "Automatické předávání je vypnuté: příjemcům napiš pouze stručnou obecnou informaci bez obsahových detailů.",
-      "Každého příjemce vyzvi k vlastní krátké reakci na předanou podstatu. Ptej se jen na jednu věc, kterou lze snadno zodpovědět.",
+        ? "Každá zpráva příjemci je pouze významově věrná reformulace nové zprávy autora v první osobě. Bez úvodu, vysvětlení, hodnocení, spojky nebo výzvy mediátora."
+        : "Automatické předávání je vypnuté: pole recipientMessages ponech prázdné.",
       settings.adaptToRecipient
-        ? "Tón každé zprávy přizpůsob konkrétnímu příjemci."
-        : "Použij pro všechny příjemce stejný neutrální tón.",
+        ? "Tón lze jemně přizpůsobit příjemci, ale nesmí se změnit význam ani konkrétní obsah."
+        : "Použij pro všechny příjemce stejnou věrnou formulaci.",
       `Soukromá odpověď autorovi má nejvýše ${settings.variants > 0 ? 150 : 105} slov.`,
       settings.variants > 0
         ? `Když autor řeší, jak něco sdělit, přidej na konec přesně ${settings.variants} krátké návrhy pod nadpisem „Návrhy formulace:“. Jinak návrhy nepřidávej násilně.`
@@ -2195,6 +2326,8 @@ function buildPrivateMediationTurnContext(room, text, author, recipients) {
         ? "Jako Iniciátor zakonči odpověď jednoduchým mikrokrokem, který rychle zapojí ostatní."
         : "Zakonči jedním přirozeným dalším krokem nebo krátkou otázkou, která účastníka motivuje pokračovat.",
       "Jestli není z nové zprávy jasný problém nebo požadovaný cíl, polož pouze jednu doplňující otázku zaměřenou na nejdůležitější chybějící informaci.",
+      "Nikdy autora nežádej o svolení k automatickému přerámování a příjemci nikdy nepopisuj, co mediátor se zprávou udělal.",
+      `Pole relationshipSignals aktualizuj pro dvojice zahrnující autora a příjemce: ${recipients.map((recipient) => `${author} + ${recipient}`).join(", ") || "žádné"}. Zachovej nejistotu a nevydávej domněnky za fakta.`,
     ].join(" "),
   ].join("\n");
 }
@@ -2281,7 +2414,7 @@ function fallbackMediatorReply(room, text, author) {
 function fallbackPrivateMediatorReply(room, text, author) {
   const lower = text.toLowerCase();
   const others = room.participants.filter((name) => name !== author);
-  const otherLabel = others.length ? others.join(", ") : "druhá strana";
+  const otherSourceLabel = others.length === 1 ? others[0] : "ostatních stran";
   const settings = sanitizeMediationSettings(room.mediationSettings || {});
 
   if (isGreetingMessage(text)) {
@@ -2296,96 +2429,86 @@ function fallbackPrivateMediatorReply(room, text, author) {
   if (isIncompleteDisclosure(text)) {
     return [
       "Ještě nevím, co vám vadí, ale chci tomu porozumět.",
-      "Co konkrétně vám v té situaci vadí nejvíc? Stačí to napsat vlastními slovy; zatím nic konkrétního ostatním nepředávám.",
+      "Co konkrétně vám v té situaci vadí nejvíc? Stačí jeden příklad.",
     ].join("\n");
   }
 
   if (containsPersonLabel(text)) {
     return [
-      "Rozumím, že chování druhé strany teď vnímáte negativně. Nechci ale předat nálepku místo podstaty.",
-      "Co konkrétně udělala nebo neudělala, z čeho ten pocit vznikl? Stačí jeden příklad; potom ho převedu do srozumitelné potřeby nebo prosby.",
+      "Rozumím, že chování druhé strany teď vnímáte negativně.",
+      "Co konkrétně udělala nebo neudělala, z čeho ten pocit vznikl? Stačí jeden příklad.",
     ].join("\n");
   }
 
   if (lower.includes("co tady") || lower.includes("k čemu") || lower.includes("k cemu")) {
-    return withDraftVariants(settings, [
-      "Podstata: chcete vědět, co se tu děje s vašimi slovy.",
-      "Spojka: všem pomůže, když je jasné, co je soukromá práce a co jde dál do místnosti.",
-      `Co předám: ostatním jen to, že ${author} si ujasňuje způsob práce s mediátorem. Soukromé formulace zůstávají tady.`,
-      "Další tah: napište jednou větou, co potřebujete, aby druhá strana konečně pochopila.",
-    ], [
-      "Potřebuji nejdřív pochopit, jak tenhle prostor funguje a co se z mých slov předává ostatním.",
-      "Chci se zapojit, ale potřebuji jistotu, že soukromé věci nezazní bez kontextu.",
-      "Pojďme si krátce ujasnit pravidla: co zůstává soukromé a co pomůže posunout dohodu.",
-    ]);
+    return "Tady můžete mluvit přímo se mnou. Pomůžu oddělit fakta, pocity a požadavky a ostatním zobrazím stejný význam v méně útočné podobě. Co potřebujete, aby druhá strana pochopila jako první?";
   }
 
   if (lower.includes("termín") || lower.includes("termin") || lower.includes("do kdy")) {
     return withDraftVariants(settings, [
-      "Krátká odpověď: bez vyjádření druhé strany nevíme, proč se termín mění. Nemá smysl hádat motiv; užitečnější je domluvit pravidlo pro změny.",
-      "Spojka: obě strany mohou potřebovat pružnost, ale zároveň předvídatelnost.",
-      `Co předám: ${author} potřebuje, aby změna termínu měla jasný důvod, nový návrh a potvrzení obou stran.`,
-      "Další tah: navrhněte, že se termín mění jen po společném potvrzení a rovnou se určí nový konkrétní čas.",
+      "Bez vyjádření druhé strany zatím nevíme, proč se termín mění. Nemá smysl hádat motiv.",
+      "Užitečné bude domluvit jednoduché pravidlo: změna platí po potvrzení obou a současně se určí nový konkrétní čas.",
     ], [
       "Můžeme se domluvit, že změna termínu bude platit až po potvrzení obou a rovnou stanovíme nový čas?",
       "Potřebuji větší předvídatelnost. Když se termín mění, pojďme vždy uvést důvod a potvrdit náhradní termín.",
       "Navrhuji jednoduché pravidlo: změna, nový termín a potvrzení obou v jedné zprávě.",
-    ]);
+    ], text);
+  }
+
+  if (/nev[ií]m.*(?:o čem|o cem|co).*(?:p[ií]š|pis)/u.test(lower)) {
+    return [
+      "Rozumím, chybí vám přehled o tom, co je pro vás z druhého rozhovoru podstatné.",
+      `Co potřebujete od ${otherSourceLabel} vědět jako první: pohled na problém, cíl, nebo konkrétní návrh dalšího kroku?`,
+    ].join("\n");
   }
 
   if (text.includes("?") || /^(proč|proc|jak|co|kdy|kde|může|muze|má|ma)\b/.test(lower.trim())) {
     return withDraftVariants(settings, [
-      "Krátká odpověď: z dosavadních informací to ještě nejde poctivě rozhodnout. Umím ale otázku převést do podoby, na kterou může druhá strana konkrétně odpovědět.",
-      `Spojka: vy potřebujete jasnou odpověď a ${otherLabel} prostor vysvětlit svůj pohled bez obvinění.`,
-      `Co předám: ${author} pokládá konkrétní otázku a hledá odpověď, která pomůže nastavit další pravidlo nebo krok.`,
-      "Další tah: oddělme krátce ověřitelný fakt od domněnky o motivech a položme jednu přímou otázku.",
+      "Z dosavadních informací to ještě nejde poctivě rozhodnout.",
+      "Vy potřebujete jasnou odpověď a na druhé straně je potřeba prostor popsat vlastní pohled bez obvinění. Který jeden ověřitelný fakt je pro odpověď nejdůležitější?",
     ], [
       "Můžete mi prosím říct, jak to vidíte vy a co by podle vás byl férový další krok?",
       "Nechci hádat vaše důvody. Co je hlavní překážka a jaké řešení by pro vás bylo přijatelné?",
       "Co z toho je podle vás fakt, v čem se rozcházíme a na čem se můžeme domluvit hned?",
-    ]);
+    ], text);
   }
 
   if (lower.includes("štve") || lower.includes("stve") || lower.includes("vadí") || lower.includes("nechci") || lower.includes("bojím")) {
     return withDraftVariants(settings, [
-      "Podstata: je tu hranice, která už potřebuje být slyšet.",
-      `Spojka: vy chcete respekt, ${otherLabel} může chtít necítit tlak. To se dá spojit přes jasné pravidlo místo výčitek.`,
-      `Co předám: ${author} potřebuje konkrétní reakci a srozumitelnou dohodu, ne boj o vinu. Syrový tón nechávám soukromě.`,
-      "Další tah: pošlu ostatním bezpečné jádro a vy mi napište, jaký minimální výsledek by vám stačil pro posun.",
+      "Slyším, že je tu hranice, která už potřebuje být jasná.",
+      "Co přesně se má změnit v chování druhé strany, abyste poznal/a skutečný posun?",
     ], [
       "Potřebuji konkrétní reakci a jasné pravidlo, abychom se netočili v nejistotě.",
       "Nechci z toho dělat boj o vinu. Potřebuji vědět, kdo o čem rozhoduje a kdy se k tomu vrátíme.",
       "Pro mě je důležité, aby se odpovědnost neměnila za pochodu bez společného potvrzení.",
-    ]);
+    ], text);
   }
 
   if (lower.includes("souhlas") || lower.includes("možná") || lower.includes("mozna")) {
     return withDraftVariants(settings, [
-      "Podstata: tady už je kousek shody.",
-      "Spojka: shodu je potřeba okamžitě převést do pravidla, jinak se zase rozpustí.",
-      `Co předám: ${author} vidí společný směr a chce ho proměnit v konkrétní dohodu.`,
-      "Další tah: pojmenujme jedno pravidlo, které může začít platit hned tento týden.",
+      "Tady už je kousek shody. Pojďme ho hned převést do něčeho konkrétního.",
+      "Jaké jedno pravidlo z toho může začít platit už tento týden?",
     ], [
       "Myslím, že tady už máme kus shody. Pojďme ho převést do jednoho konkrétního pravidla.",
       "Souhlasím se směrem, ale potřebuju, aby z toho vzniklo něco ověřitelného.",
       "Navrhuji zapsat, co přesně začne platit a kdy ověříme, jestli to funguje.",
-    ]);
+    ], text);
   }
 
   return withDraftVariants(settings, [
-    "Podstata: chcete být pochopen/a a dostat se k použitelné dohodě.",
-    `Spojka: vy i ${otherLabel} pravděpodobně potřebujete méně nejasností a méně obrany.`,
-    `Co předám: ${author} přináší nový pohled a hledá pravidlo, které bude fungovat pro obě strany.`,
-    "Další tah: zkusme to stáhnout na jednu konkrétní větu: co má odteď platit jinak?",
+    "Rozumím. Pojďme z toho rychle vytáhnout konkrétní cíl.",
+    "Co má odteď platit jinak, abyste poznal/a, že se situace opravdu zlepšila?",
   ], [
     "Potřebuji, abychom se posunuli od domýšlení ke konkrétnímu pravidlu.",
     "Chci popsat svůj pohled tak, aby byl slyšet, ale nezvýšil napětí.",
     "Pojďme najít jednu změnu, která začne platit hned a dá se za pár dní ověřit.",
-  ]);
+  ], text);
 }
 
-function withDraftVariants(settings, bodyLines, drafts) {
-  const count = Math.max(0, Math.min(3, Number(settings.variants || 0)));
+function withDraftVariants(settings, bodyLines, drafts, originalText = "") {
+  const sourceText = String(originalText).toLowerCase();
+  const wordingRequested = /jak.*(?:říct|rict|napsat|formul)|přeformul|preformul|zn[ií]t/u.test(sourceText);
+  const count = wordingRequested ? Math.max(0, Math.min(3, Number(settings.variants || 0))) : 0;
   const tunedLines = [...bodyLines];
   if (settings.initiatorMode) {
     tunedLines.push("Aktivace: pošlete ostatním jednu otázku, na kterou jde odpovědět do 30 sekund.");
@@ -2476,34 +2599,17 @@ function safeNewcomerTopics(room) {
 }
 
 function fallbackRecipientBridgeReply(room, text, author, recipient) {
-  const settings = sanitizeMediationSettings(room.mediationSettings || {});
   if (isGreetingMessage(text)) {
-    return [
-      `${author} se právě zapojil/a do rozhovoru. Zatím nezazněl konkrétní postoj, takže nic nedomýšlím.`,
-      `Mezitím můžete vy, ${recipient}, jednou větou napsat, co by podle vás měla tato dohoda hlavně vyřešit.`,
-    ].join("\n");
+    return "Ahoj.";
   }
   if (isIncompleteDisclosure(text)) {
-    return [
-      `${author} naznačil/a, že chce pojmenovat něco důležitého, ale zatím to neupřesnil/a. Proto vám nepředávám domněnku místo obsahu.`,
-      `Až zazní konkrétní podstata, shrnu ji. Vy zatím můžete jednou větou doplnit, co je v tématu nejdůležitější pro vás, ${recipient}.`,
-    ].join("\n");
+    return "Chci pojmenovat něco, co mi vadí, ale zatím jsem to ještě neupřesnil/a.";
   }
   if (containsPersonLabel(text)) {
-    return [
-      `${author} teď popsal/a negativní dojem z chování druhé strany, ale zatím neuvedl/a konkrétní situaci. Nepředávám vám proto nálepku jako fakt.`,
-      `Až ji upřesní, shrnu skutečnou podstatu. Vy, ${recipient}, můžete mezitím jednou větou napsat, co pro vás znamená ochota spolupracovat.`,
-    ].join("\n");
+    return "Mám pocit, že z druhé strany chybí ochota ke spolupráci. Potřebuji ještě popsat konkrétní situaci, ze které ten pocit vznikl.";
   }
-  const authenticity = settings.style === "authentic"
-    ? "Ponechávám víc původní energie sdělení, ale odstraňuji to, co by zbytečně zraňovalo."
-    : "Překládám to do klidnější řeči, aby šlo lépe slyšet podstatu.";
-  return [
-    `${author} právě přinesl/a nový pohled. ${authenticity}`,
-    `Jádro pro vás, ${recipient}: nejde teď o útok, ale o potřebu srozumitelnější reakce a jasnější dohody.`,
-    "Spojka: méně domýšlení, víc konkrétních pravidel.",
-    "Další tah: napište jednou větou, co z toho umíte uznat, a jednu věc, kterou potřebujete vy.",
-  ].join("\n");
+  // Když AI není dostupná, je bezpečnější zachovat význam doslova než jej nahradit obecným odhadem.
+  return String(text || "").trim();
 }
 
 function isGreetingMessage(text) {

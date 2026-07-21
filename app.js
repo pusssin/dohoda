@@ -1066,18 +1066,19 @@ function listTool(title, items) {
 function messageView(message, index = 0) {
   const mine = message.me || message.author === roomParticipantName();
   const parsed = parseDraftSuggestions(message.text);
-  const roleClass = message.ai ? "speaker-ai" : mine ? "speaker-me" : "speaker-other";
+  const relayed = Boolean(message.mediatedFrom);
+  const roleClass = relayed ? "speaker-other" : message.ai ? "speaker-ai" : mine ? "speaker-me" : "speaker-other";
   const accent = speakerAccent(message, mine);
   const collapseKey = messageCollapseKey(message, index);
   const collapsed = Boolean(state.collapsedMessages[collapseKey]);
   const label = message.mediatedFrom
-    ? `Mediovaný přenos od ${message.mediatedFrom}`
+    ? message.mediatedFrom
     : message.activity
       ? "Aktivita v mediaci"
       : message.author;
   const decision = message.decision ? `<small>${escapeHtml(message.decision)}</small>` : "";
   return `
-    <article class="message ${roleClass} ${message.ai ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${message.mediatedFrom ? "mediated" : ""} ${collapsed ? "collapsed" : ""}" style="--speaker: ${accent};">
+    <article class="message ${roleClass} ${message.ai && !relayed ? "ai" : ""} ${mine ? "me" : ""} ${message.pending ? "pending" : ""} ${message.activity ? "activity" : ""} ${relayed ? "mediated" : ""} ${collapsed ? "collapsed" : ""}" style="--speaker: ${accent};">
       <div class="message-head">
         <strong>${escapeHtml(label)}</strong>
         <button class="message-collapse-btn" type="button" data-toggle-message="${escapeHtml(collapseKey)}" aria-label="${collapsed ? "Rozbalit zprávu" : "Sbalit zprávu"}"><span>${collapsed ? "+" : "−"}</span></button>
@@ -1109,7 +1110,7 @@ function messageCollapseKey(message, index) {
 
 function speakerAccent(message, mine) {
   if (message.activity) return "var(--future-accent-2)";
-  if (message.mediatedFrom) return "var(--blue)";
+  if (message.mediatedFrom) return colorFromName(message.mediatedFrom);
   if (message.ai) return "var(--future-accent)";
   if (mine) return "var(--green)";
   return colorFromName(message.author || "účastník");
